@@ -4,9 +4,8 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
-import android.graphics.RadialGradient;
+import android.graphics.Path;
 import android.graphics.RectF;
-import android.graphics.Shader;
 import android.view.MotionEvent;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
@@ -16,113 +15,97 @@ import java.util.List;
 import java.util.Locale;
 
 public class GameView extends SurfaceView implements Runnable, SurfaceHolder.Callback {
-    private static final int EMPTY = 0;
-    private static final int WALL = 1;
-    private static final int EXIT = 2;
-    private static final float PLAYER_SPEED = 4.8f;
-    private static final float ENEMY_PATROL_SPEED = 1.55f;
-    private static final float ENEMY_HUNT_SPEED = 2.85f;
-    private static final float PLAYER_RADIUS = 0.28f;
-    private static final float ENEMY_RADIUS = 0.30f;
-    private static final float LIGHT_DURATION = 2.2f;
-    private static final float LIGHT_RADIUS = 4.4f;
-    private static final float SAFE_REVEAL_RADIUS = 1.25f;
-    private static final float BATTERY_MAX = 100f;
-    private static final float BATTERY_COST = 22f;
-    private static final float BATTERY_RECHARGE = 4.5f;
-    private static final float ENEMY_ATTRACTION_TIME = 4.2f;
+    private static final float MAX_PULL = 260f;
+    private static final float POWER_SCALE = 4.4f;
+    private static final float BASE_GRAVITY = 980f;
+    private static final float MIN_SHOT_POWER = 30f;
 
     private final SurfaceHolder holder;
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final List<Enemy> enemies = new ArrayList<>();
+    private final Paint smallTextPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final List<Level> levels = new ArrayList<>();
 
     private Thread thread;
     private volatile boolean running;
-    private int[][] tiles;
-    private int cols;
-    private int rows;
-    private int levelIndex;
-    private int completedLevels;
-    private float playerX;
-    private float playerY;
-    private float startX;
-    private float startY;
-    private float exitX;
-    private float exitY;
-    private float battery = BATTERY_MAX;
-    private float lightTimer;
-    private float dangerTimer;
-    private float lastPulseX;
-    private float lastPulseY;
-    private float moveX;
-    private float moveY;
-    private float cellSize;
-    private float offsetX;
-    private float offsetY;
-    private RectF lightButton = new RectF();
-    private RectF restartButton = new RectF();
-    private GameState state = GameState.PLAYING;
-    private String message = "";
 
-    private final String[][] levels = new String[][]{
-            {
-                    "###############",
-                    "#P....#.......#",
-                    "#.###.#.#####.#",
-                    "#...#...#...#.#",
-                    "###.#####.#.#.#",
-                    "#...#.....#...#",
-                    "#.###.#######.#",
-                    "#.....#....E..#",
-                    "###############"
-            },
-            {
-                    "#################",
-                    "#P..#...........#",
-                    "###.#.#########.#",
-                    "#...#.....#.....#",
-                    "#.#######.#.#####",
-                    "#.......#.#.....#",
-                    "#.#####.#.#####.#",
-                    "#.#.....#.....#.#",
-                    "#.#.#########.#.#",
-                    "#.......E.....#.#",
-                    "#################"
-            },
-            {
-                    "###################",
-                    "#P....#...........#",
-                    "#.###.#.#########.#",
-                    "#...#.#.....#.....#",
-                    "###.#.#####.#.###.#",
-                    "#...#.....#.#.#...#",
-                    "#.#######.#.#.#.###",
-                    "#.....#...#...#...#",
-                    "#####.#.#########.#",
-                    "#.....#.......E...#",
-                    "###################"
-            }
-    };
+    private int screenW;
+    private int screenH;
+    private float groundY;
+    private float gameTime;
+
+    private int levelIndex;
+    private int attempts;
+    private int stars;
+    private GameState state = GameState.AIMING;
+
+    private float launchX;
+    private float launchY;
+    private float dragX;
+    private float dragY;
+    private boolean dragging;
+
+    private float projectileX;
+    private float projectileY;
+    private float projectileVx;
+    private float projectileVy;
+    private float projectileRadius;
+    private float projectileRotation;
+    private float flightTime;
+    private float stopTimer;
 
     public GameView(Context context) {
         super(context);
         holder = getHolder();
         holder.addCallback(this);
         setFocusable(true);
+        setupText();
+        setupLevels();
+    }
+
+    private void setupText() {
         textPaint.setColor(Color.WHITE);
-        textPaint.setTextAlign(Paint.Align.LEFT);
-        loadLevel(0);
+        textPaint.setTextSize(42f);
+        textPaint.setFakeBoldText(true);
+        smallTextPaint.setColor(Color.WHITE);
+        smallTextPaint.setTextSize(28f);
+    }
+
+    private void setupLevels() {
+        levels.add(new Level("Flecha no alvo", Mode.BULLSEYE, Projectile.ARROW,
+                0.13f, 0.72f, 0.78f, 0.38f, 0f, 1f, 0.15f));
+        levels.add(new Level("Bolinha no cesto", Mode.BIN, Projectile.PAPER_BALL,
+                0.16f, 0.67f, 0.76f, 0.60f, 0f, 0.95f, 0.35f));
+        levels.add(new Level("Pedra na lâmpada", Mode.LAMP, Projectile.STONE,
+                0.12f, 0.72f, 0.80f, 0.28f, -18f, 1.05f, 0.28f));
+        levels.add(new Level("Flecha com vento", Mode.BULLSEYE, Projectile.ARROW,
+                0.13f, 0.72f, 0.78f, 0.34f, 55f, 1f, 0.15f));
+        levels.add(new Level("Cesto com quique", Mode.BIN, Projectile.BALL,
+                0.14f, 0.68f, 0.78f, 0.60f, 0f, 0.98f, 0.58f)
+                .addObstacle(0.46f, 0.70f, 0.56f, 0.76f));
+        levels.add(new Level("Pedra com curva", Mode.LAMP, Projectile.STONE,
+                0.13f, 0.74f, 0.83f, 0.25f, -70f, 1.08f, 0.30f)
+                .addObstacle(0.50f, 0.32f, 0.56f, 0.82f));
+        levels.add(new Level("Copo em movimento", Mode.CUP, Projectile.BALL,
+                0.13f, 0.68f, 0.74f, 0.62f, 0f, 0.98f, 0.52f)
+                .moving(0.09f, 1.2f));
+        levels.add(new Level("Trickshot final", Mode.BULLSEYE, Projectile.STONE,
+                0.12f, 0.70f, 0.82f, 0.36f, 0f, 1.04f, 0.45f)
+                .addObstacle(0.38f, 0.50f, 0.46f, 0.84f)
+                .addObstacle(0.62f, 0.18f, 0.68f, 0.58f));
     }
 
     @Override
     public void surfaceCreated(SurfaceHolder surfaceHolder) {
+        calculateWorld();
+        resetLevel(false);
         resume();
     }
 
     @Override
     public void surfaceChanged(SurfaceHolder surfaceHolder, int format, int width, int height) {
-        calculateBoard(width, height);
+        calculateWorld();
+        resetLevel(false);
     }
 
     @Override
@@ -135,7 +118,7 @@ public class GameView extends SurfaceView implements Runnable, SurfaceHolder.Cal
             return;
         }
         running = true;
-        thread = new Thread(this, "ApagaoGameLoop");
+        thread = new Thread(this, "MiraRealLoop");
         thread.start();
     }
 
@@ -159,327 +142,547 @@ public class GameView extends SurfaceView implements Runnable, SurfaceHolder.Cal
             lastTime = now;
             update(dt);
             drawFrame();
-            sleepToSaveBattery();
+            try {
+                Thread.sleep(16L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+    }
+
+    private void calculateWorld() {
+        screenW = Math.max(1, getWidth());
+        screenH = Math.max(1, getHeight());
+        groundY = screenH * 0.86f;
+        textPaint.setTextSize(Math.max(34f, screenH * 0.055f));
+        smallTextPaint.setTextSize(Math.max(22f, screenH * 0.035f));
+    }
+
+    private Level level() {
+        return levels.get(levelIndex);
+    }
+
+    private void resetLevel(boolean countAttemptReset) {
+        Level level = level();
+        launchX = level.launchNX * screenW;
+        launchY = level.launchNY * screenH;
+        projectileX = launchX;
+        projectileY = launchY;
+        projectileVx = 0f;
+        projectileVy = 0f;
+        projectileRotation = 0f;
+        flightTime = 0f;
+        stopTimer = 0f;
+        projectileRadius = radiusFor(level.projectile);
+        dragX = launchX;
+        dragY = launchY;
+        dragging = false;
+        state = GameState.AIMING;
+        if (countAttemptReset) {
+            attempts = 0;
+            stars = 0;
         }
     }
 
     private void update(float dt) {
-        if (state != GameState.PLAYING) {
+        gameTime += dt;
+        if (state != GameState.FLYING) {
             return;
         }
 
-        if (lightTimer > 0f) {
-            lightTimer = Math.max(0f, lightTimer - dt);
+        Level level = level();
+        flightTime += dt;
+
+        projectileVx += level.wind * dt;
+        projectileVy += BASE_GRAVITY * level.gravityScale * dt;
+        projectileVx *= Math.max(0.80f, 1f - level.airDrag * dt);
+        projectileVy *= Math.max(0.80f, 1f - level.airDrag * dt);
+
+        projectileX += projectileVx * dt;
+        projectileY += projectileVy * dt;
+        projectileRotation = (float) Math.toDegrees(Math.atan2(projectileVy, projectileVx));
+
+        collideWorld(level);
+        if (hitsTarget(level)) {
+            winShot();
+            return;
+        }
+
+        float speed = (float) Math.sqrt(projectileVx * projectileVx + projectileVy * projectileVy);
+        if (projectileY + projectileRadius >= groundY - 1f && speed < 80f) {
+            stopTimer += dt;
         } else {
-            battery = Math.min(BATTERY_MAX, battery + BATTERY_RECHARGE * dt);
+            stopTimer = 0f;
         }
-        dangerTimer = Math.max(0f, dangerTimer - dt);
 
-        movePlayer(dt);
-        for (Enemy enemy : enemies) {
-            enemy.update(dt);
-            if (distance(playerX, playerY, enemy.x, enemy.y) < PLAYER_RADIUS + ENEMY_RADIUS) {
-                state = GameState.DEFEAT;
-                message = "Derrota! O perigo encontrou você.";
+        if (stopTimer > 0.7f || projectileX < -160f || projectileX > screenW + 160f || projectileY > screenH + 160f) {
+            state = GameState.FAILED;
+        }
+    }
+
+    private void collideWorld(Level level) {
+        if (projectileY + projectileRadius > groundY) {
+            projectileY = groundY - projectileRadius;
+            projectileVy = -Math.abs(projectileVy) * level.bounce;
+            projectileVx *= 0.82f;
+            if (Math.abs(projectileVy) < 45f) {
+                projectileVy = 0f;
             }
         }
 
-        if (distance(playerX, playerY, exitX, exitY) < 0.45f) {
-            completedLevels++;
-            if (completedLevels >= levels.length) {
-                state = GameState.VICTORY;
-                message = "Vitória! Você escapou de todas as fases.";
-            } else {
-                loadLevel(completedLevels);
+        if (projectileX - projectileRadius < 0f) {
+            projectileX = projectileRadius;
+            projectileVx = Math.abs(projectileVx) * level.bounce;
+        } else if (projectileX + projectileRadius > screenW) {
+            projectileX = screenW - projectileRadius;
+            projectileVx = -Math.abs(projectileVx) * level.bounce;
+        }
+
+        for (Obstacle obstacle : level.obstacles) {
+            RectF r = obstacle.toRect(screenW, screenH);
+            if (circleIntersectsRect(projectileX, projectileY, projectileRadius, r)) {
+                resolveObstacleCollision(r, level.bounce);
             }
         }
     }
 
-    private void movePlayer(float dt) {
-        float length = (float) Math.sqrt(moveX * moveX + moveY * moveY);
-        if (length <= 0.05f) {
+    private void resolveObstacleCollision(RectF r, float bounce) {
+        float leftPen = Math.abs(projectileX - r.left);
+        float rightPen = Math.abs(projectileX - r.right);
+        float topPen = Math.abs(projectileY - r.top);
+        float bottomPen = Math.abs(projectileY - r.bottom);
+        float min = Math.min(Math.min(leftPen, rightPen), Math.min(topPen, bottomPen));
+
+        if (min == leftPen) {
+            projectileX = r.left - projectileRadius;
+            projectileVx = -Math.abs(projectileVx) * bounce;
+        } else if (min == rightPen) {
+            projectileX = r.right + projectileRadius;
+            projectileVx = Math.abs(projectileVx) * bounce;
+        } else if (min == topPen) {
+            projectileY = r.top - projectileRadius;
+            projectileVy = -Math.abs(projectileVy) * bounce;
+            projectileVx *= 0.86f;
+        } else {
+            projectileY = r.bottom + projectileRadius;
+            projectileVy = Math.abs(projectileVy) * bounce;
+            projectileVx *= 0.86f;
+        }
+    }
+
+    private boolean hitsTarget(Level level) {
+        float tx = currentTargetX(level);
+        float ty = level.targetNY * screenH;
+
+        if (level.mode == Mode.BIN || level.mode == Mode.CUP) {
+            RectF cup = targetRect(level, tx, ty);
+            return projectileX > cup.left && projectileX < cup.right && projectileY > cup.top && projectileY < cup.bottom && projectileVy > -120f;
+        }
+
+        float targetRadius = targetRadius(level);
+        return distance(projectileX, projectileY, tx, ty) < projectileRadius + targetRadius;
+    }
+
+    private void winShot() {
+        stars = attempts <= 1 ? 3 : attempts <= 3 ? 2 : 1;
+        state = GameState.SUCCESS;
+    }
+
+    private void nextLevel() {
+        if (levelIndex < levels.size() - 1) {
+            levelIndex++;
+            attempts = 0;
+            resetLevel(false);
+        } else {
+            state = GameState.FINISHED;
+        }
+    }
+
+    private void shoot() {
+        float dx = launchX - dragX;
+        float dy = launchY - dragY;
+        float pull = (float) Math.sqrt(dx * dx + dy * dy);
+        if (pull < MIN_SHOT_POWER) {
+            dragging = false;
+            dragX = launchX;
+            dragY = launchY;
             return;
         }
-        float vx = moveX / length * PLAYER_SPEED * dt;
-        float vy = moveY / length * PLAYER_SPEED * dt;
-        float nextX = playerX + vx;
-        if (!collides(nextX, playerY, PLAYER_RADIUS)) {
-            playerX = nextX;
-        }
-        float nextY = playerY + vy;
-        if (!collides(playerX, nextY, PLAYER_RADIUS)) {
-            playerY = nextY;
-        }
-    }
 
-    private void drawFrame() {
-        if (!holder.getSurface().isValid()) {
-            return;
-        }
-        Canvas canvas = holder.lockCanvas();
-        if (canvas == null) {
-            return;
-        }
-        try {
-            canvas.drawColor(Color.rgb(5, 5, 8));
-            calculateBoard(canvas.getWidth(), canvas.getHeight());
-            drawWorld(canvas);
-            drawDarkness(canvas);
-            drawHud(canvas);
-            if (state != GameState.PLAYING) {
-                drawEndPanel(canvas);
-            }
-        } finally {
-            holder.unlockCanvasAndPost(canvas);
-        }
-    }
-
-    private void drawWorld(Canvas canvas) {
-        for (int y = 0; y < rows; y++) {
-            for (int x = 0; x < cols; x++) {
-                if (!isVisible(x + 0.5f, y + 0.5f) && state == GameState.PLAYING) {
-                    continue;
-                }
-                float left = offsetX + x * cellSize;
-                float top = offsetY + y * cellSize;
-                if (tiles[y][x] == WALL) {
-                    paint.setColor(Color.rgb(62, 68, 83));
-                    canvas.drawRect(left, top, left + cellSize, top + cellSize, paint);
-                    paint.setColor(Color.rgb(35, 39, 48));
-                    paint.setStyle(Paint.Style.STROKE);
-                    paint.setStrokeWidth(2f);
-                    canvas.drawRect(left + 2f, top + 2f, left + cellSize - 2f, top + cellSize - 2f, paint);
-                    paint.setStyle(Paint.Style.FILL);
-                } else if (tiles[y][x] == EXIT) {
-                    paint.setColor(Color.rgb(56, 178, 95));
-                    canvas.drawRoundRect(new RectF(left + 6f, top + 6f, left + cellSize - 6f, top + cellSize - 6f), 12f, 12f, paint);
-                } else {
-                    paint.setColor(Color.rgb(21, 24, 32));
-                    canvas.drawRect(left, top, left + cellSize, top + cellSize, paint);
-                }
-            }
-        }
-        drawEnemies(canvas);
-        drawPlayer(canvas);
-    }
-
-    private void drawEnemies(Canvas canvas) {
-        for (Enemy enemy : enemies) {
-            if (!isVisible(enemy.x, enemy.y) && state == GameState.PLAYING) {
-                continue;
-            }
-            paint.setColor(dangerTimer > 0f ? Color.rgb(230, 56, 71) : Color.rgb(155, 63, 78));
-            canvas.drawCircle(worldX(enemy.x), worldY(enemy.y), ENEMY_RADIUS * cellSize, paint);
-            paint.setColor(Color.rgb(30, 0, 0));
-            canvas.drawCircle(worldX(enemy.x - 0.08f), worldY(enemy.y - 0.06f), 0.035f * cellSize, paint);
-            canvas.drawCircle(worldX(enemy.x + 0.08f), worldY(enemy.y - 0.06f), 0.035f * cellSize, paint);
-        }
-    }
-
-    private void drawPlayer(Canvas canvas) {
-        paint.setColor(Color.rgb(104, 176, 255));
-        canvas.drawCircle(worldX(playerX), worldY(playerY), PLAYER_RADIUS * cellSize, paint);
-        paint.setColor(Color.WHITE);
-        canvas.drawCircle(worldX(playerX + 0.08f), worldY(playerY - 0.08f), 0.045f * cellSize, paint);
-    }
-
-    private void drawDarkness(Canvas canvas) {
-        if (state != GameState.PLAYING) {
-            return;
-        }
-        float radius = (lightTimer > 0f ? LIGHT_RADIUS : SAFE_REVEAL_RADIUS) * cellSize;
-        float centerX = worldX(playerX);
-        float centerY = worldY(playerY);
-        int transparent = Color.argb(lightTimer > 0f ? 15 : 95, 0, 0, 0);
-        RadialGradient gradient = new RadialGradient(centerX, centerY, radius,
-                new int[]{Color.TRANSPARENT, transparent, Color.argb(245, 0, 0, 0)},
-                new float[]{0f, 0.60f, 1f}, Shader.TileMode.CLAMP);
-        paint.setShader(gradient);
-        canvas.drawRect(0, 0, canvas.getWidth(), canvas.getHeight(), paint);
-        paint.setShader(null);
-    }
-
-    private void drawHud(Canvas canvas) {
-        float w = canvas.getWidth();
-        float h = canvas.getHeight();
-        textPaint.setTextSize(32f);
-        textPaint.setColor(Color.WHITE);
-        canvas.drawText("Apagão", 24f, 42f, textPaint);
-        textPaint.setTextSize(22f);
-        canvas.drawText(String.format(Locale.US, "Fase %d/%d", levelIndex + 1, levels.length), 24f, 72f, textPaint);
-
-        paint.setColor(Color.rgb(46, 49, 59));
-        canvas.drawRoundRect(new RectF(24f, 88f, 254f, 116f), 12f, 12f, paint);
-        paint.setColor(battery >= BATTERY_COST ? Color.rgb(248, 211, 106) : Color.rgb(122, 88, 49));
-        canvas.drawRoundRect(new RectF(28f, 92f, 28f + 222f * (battery / BATTERY_MAX), 112f), 10f, 10f, paint);
-        textPaint.setTextSize(18f);
-        textPaint.setColor(Color.rgb(220, 226, 235));
-        canvas.drawText("Bateria", 264f, 110f, textPaint);
-
-        float buttonSize = Math.min(138f, h * 0.20f);
-        lightButton.set(w - buttonSize - 34f, h - buttonSize - 34f, w - 34f, h - 34f);
-        paint.setColor(battery >= BATTERY_COST ? Color.rgb(249, 211, 106) : Color.rgb(75, 72, 65));
-        canvas.drawOval(lightButton, paint);
-        textPaint.setTextAlign(Paint.Align.CENTER);
-        textPaint.setTextSize(22f);
-        textPaint.setColor(Color.rgb(14, 16, 22));
-        canvas.drawText("LUZ", lightButton.centerX(), lightButton.centerY() + 8f, textPaint);
-        textPaint.setTextAlign(Paint.Align.LEFT);
-
-        if (dangerTimer > 0f) {
-            textPaint.setTextSize(22f);
-            textPaint.setColor(Color.rgb(255, 115, 119));
-            canvas.drawText("Perigo atraído pela luz!", 24f, 148f, textPaint);
+        if (pull > MAX_PULL) {
+            dx = dx / pull * MAX_PULL;
+            dy = dy / pull * MAX_PULL;
+            pull = MAX_PULL;
         }
 
-        textPaint.setTextSize(18f);
-        textPaint.setColor(Color.rgb(190, 198, 210));
-        canvas.drawText("Arraste no lado esquerdo para andar. Toque LUZ para revelar o labirinto.", 24f, h - 22f, textPaint);
-    }
-
-    private void drawEndPanel(Canvas canvas) {
-        paint.setColor(Color.argb(215, 0, 0, 0));
-        canvas.drawRect(0, 0, canvas.getWidth(), canvas.getHeight(), paint);
-        textPaint.setTextAlign(Paint.Align.CENTER);
-        textPaint.setColor(Color.WHITE);
-        textPaint.setTextSize(42f);
-        canvas.drawText(message, canvas.getWidth() / 2f, canvas.getHeight() / 2f - 44f, textPaint);
-        textPaint.setTextSize(24f);
-        canvas.drawText("Toque para jogar novamente", canvas.getWidth() / 2f, canvas.getHeight() / 2f + 2f, textPaint);
-        restartButton.set(canvas.getWidth() / 2f - 150f, canvas.getHeight() / 2f + 28f, canvas.getWidth() / 2f + 150f, canvas.getHeight() / 2f + 88f);
-        paint.setColor(Color.rgb(104, 176, 255));
-        canvas.drawRoundRect(restartButton, 18f, 18f, paint);
-        textPaint.setColor(Color.rgb(8, 12, 18));
-        textPaint.setTextSize(24f);
-        canvas.drawText("Reiniciar", canvas.getWidth() / 2f, canvas.getHeight() / 2f + 67f, textPaint);
-        textPaint.setTextAlign(Paint.Align.LEFT);
+        attempts++;
+        projectileX = launchX;
+        projectileY = launchY;
+        projectileVx = dx * POWER_SCALE;
+        projectileVy = dy * POWER_SCALE;
+        state = GameState.FLYING;
+        dragging = false;
+        flightTime = 0f;
+        stopTimer = 0f;
     }
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {
-        int action = event.getActionMasked();
+        if (screenW <= 0 || screenH <= 0) {
+            return true;
+        }
+
         float x = event.getX();
         float y = event.getY();
-        if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_POINTER_DOWN) {
-            if (state != GameState.PLAYING) {
-                completedLevels = 0;
-                loadLevel(0);
+
+        if (event.getAction() == MotionEvent.ACTION_DOWN) {
+            if (state == GameState.SUCCESS) {
+                nextLevel();
                 return true;
             }
-            if (lightButton.contains(x, y)) {
-                pulseLight();
+            if (state == GameState.FAILED) {
+                resetLevel(false);
                 return true;
             }
+            if (state == GameState.FINISHED) {
+                levelIndex = 0;
+                attempts = 0;
+                resetLevel(false);
+                return true;
+            }
+            if (state == GameState.FLYING) {
+                return true;
+            }
+            dragging = true;
+            dragX = x;
+            dragY = y;
+            clampDrag();
+            return true;
         }
-        if (state == GameState.PLAYING) {
-            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
-                moveX = 0f;
-                moveY = 0f;
-            } else if (x < getWidth() * 0.58f) {
-                float baseX = getWidth() * 0.18f;
-                float baseY = getHeight() * 0.72f;
-                moveX = clamp((x - baseX) / 90f, -1f, 1f);
-                moveY = clamp((y - baseY) / 90f, -1f, 1f);
-            }
+
+        if (event.getAction() == MotionEvent.ACTION_MOVE && dragging) {
+            dragX = x;
+            dragY = y;
+            clampDrag();
+            return true;
+        }
+
+        if ((event.getAction() == MotionEvent.ACTION_UP || event.getAction() == MotionEvent.ACTION_CANCEL) && dragging) {
+            shoot();
+            return true;
         }
         return true;
     }
 
-    private void pulseLight() {
-        if (battery < BATTERY_COST) {
+    private void clampDrag() {
+        float dx = dragX - launchX;
+        float dy = dragY - launchY;
+        float dist = (float) Math.sqrt(dx * dx + dy * dy);
+        if (dist > MAX_PULL) {
+            dragX = launchX + dx / dist * MAX_PULL;
+            dragY = launchY + dy / dist * MAX_PULL;
+        }
+    }
+
+    private void drawFrame() {
+        Canvas canvas = null;
+        try {
+            canvas = holder.lockCanvas();
+            if (canvas != null) {
+                drawGame(canvas);
+            }
+        } finally {
+            if (canvas != null) {
+                holder.unlockCanvasAndPost(canvas);
+            }
+        }
+    }
+
+    private void drawGame(Canvas canvas) {
+        canvas.drawColor(Color.rgb(22, 24, 30));
+        drawBackground(canvas);
+        drawTarget(canvas, level());
+        drawObstacles(canvas, level());
+        drawLauncher(canvas);
+        if (state == GameState.AIMING && dragging) {
+            drawAimPreview(canvas);
+        }
+        drawProjectile(canvas, level().projectile);
+        drawHud(canvas);
+        drawStateMessage(canvas);
+    }
+
+    private void drawBackground(Canvas canvas) {
+        paint.setStyle(Paint.Style.FILL);
+        paint.setColor(Color.rgb(32, 37, 46));
+        canvas.drawRect(0, groundY, screenW, screenH, paint);
+        paint.setColor(Color.rgb(55, 59, 70));
+        paint.setStrokeWidth(4f);
+        canvas.drawLine(0, groundY, screenW, groundY, paint);
+
+        paint.setStrokeWidth(2f);
+        paint.setColor(Color.argb(60, 255, 255, 255));
+        for (int i = 0; i < 6; i++) {
+            float y = groundY + 20f + i * 34f;
+            canvas.drawLine(0, y, screenW, y, paint);
+        }
+    }
+
+    private void drawTarget(Canvas canvas, Level level) {
+        float tx = currentTargetX(level);
+        float ty = level.targetNY * screenH;
+        if (level.mode == Mode.BULLSEYE) {
+            drawBullseye(canvas, tx, ty, targetRadius(level));
+        } else if (level.mode == Mode.BIN) {
+            drawBin(canvas, targetRect(level, tx, ty));
+        } else if (level.mode == Mode.LAMP) {
+            drawLamp(canvas, tx, ty);
+        } else if (level.mode == Mode.CUP) {
+            drawCup(canvas, targetRect(level, tx, ty));
+        }
+    }
+
+    private void drawBullseye(Canvas canvas, float tx, float ty, float radius) {
+        paint.setStyle(Paint.Style.FILL);
+        paint.setColor(Color.rgb(240, 240, 240));
+        canvas.drawCircle(tx, ty, radius, paint);
+        paint.setColor(Color.rgb(221, 54, 54));
+        canvas.drawCircle(tx, ty, radius * 0.72f, paint);
+        paint.setColor(Color.rgb(245, 245, 245));
+        canvas.drawCircle(tx, ty, radius * 0.45f, paint);
+        paint.setColor(Color.rgb(36, 125, 224));
+        canvas.drawCircle(tx, ty, radius * 0.20f, paint);
+    }
+
+    private void drawBin(Canvas canvas, RectF r) {
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeWidth(8f);
+        paint.setColor(Color.rgb(100, 210, 160));
+        canvas.drawLine(r.left, r.top, r.right, r.top, paint);
+        paint.setColor(Color.rgb(75, 105, 95));
+        canvas.drawLine(r.left, r.top, r.left + r.width() * 0.18f, r.bottom, paint);
+        canvas.drawLine(r.right, r.top, r.right - r.width() * 0.18f, r.bottom, paint);
+        canvas.drawLine(r.left + r.width() * 0.18f, r.bottom, r.right - r.width() * 0.18f, r.bottom, paint);
+        paint.setStyle(Paint.Style.FILL);
+        paint.setColor(Color.argb(70, 100, 210, 160));
+        canvas.drawRect(r, paint);
+    }
+
+    private void drawCup(Canvas canvas, RectF r) {
+        Path path = new Path();
+        path.moveTo(r.left, r.top);
+        path.lineTo(r.right, r.top);
+        path.lineTo(r.right - r.width() * 0.22f, r.bottom);
+        path.lineTo(r.left + r.width() * 0.22f, r.bottom);
+        path.close();
+        paint.setStyle(Paint.Style.FILL);
+        paint.setColor(Color.argb(80, 80, 170, 240));
+        canvas.drawPath(path, paint);
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeWidth(7f);
+        paint.setColor(Color.rgb(120, 210, 255));
+        canvas.drawPath(path, paint);
+        paint.setStrokeWidth(5f);
+        canvas.drawLine(r.left, r.top, r.right, r.top, paint);
+    }
+
+    private void drawLamp(Canvas canvas, float tx, float ty) {
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeWidth(5f);
+        paint.setColor(Color.rgb(120, 120, 130));
+        canvas.drawLine(tx, 0, tx, ty - 34f, paint);
+        paint.setStyle(Paint.Style.FILL);
+        paint.setColor(Color.rgb(255, 224, 95));
+        canvas.drawCircle(tx, ty, targetRadius(level()), paint);
+        paint.setColor(Color.argb(55, 255, 224, 95));
+        canvas.drawCircle(tx, ty, targetRadius(level()) * 2.2f, paint);
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeWidth(4f);
+        paint.setColor(Color.rgb(80, 80, 80));
+        canvas.drawCircle(tx, ty, targetRadius(level()), paint);
+    }
+
+    private void drawObstacles(Canvas canvas, Level level) {
+        paint.setStyle(Paint.Style.FILL);
+        for (Obstacle obstacle : level.obstacles) {
+            RectF r = obstacle.toRect(screenW, screenH);
+            paint.setColor(Color.rgb(88, 92, 105));
+            canvas.drawRoundRect(r, 10f, 10f, paint);
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(3f);
+            paint.setColor(Color.rgb(135, 140, 155));
+            canvas.drawRoundRect(r, 10f, 10f, paint);
+            paint.setStyle(Paint.Style.FILL);
+        }
+    }
+
+    private void drawLauncher(Canvas canvas) {
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeWidth(8f);
+        paint.setColor(Color.rgb(160, 110, 70));
+        canvas.drawCircle(launchX, launchY, 38f, paint);
+        paint.setStyle(Paint.Style.FILL);
+        paint.setColor(Color.rgb(215, 165, 95));
+        canvas.drawCircle(launchX, launchY, 13f, paint);
+    }
+
+    private void drawAimPreview(Canvas canvas) {
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeWidth(6f);
+        paint.setColor(Color.rgb(255, 205, 80));
+        canvas.drawLine(launchX, launchY, dragX, dragY, paint);
+
+        float dx = launchX - dragX;
+        float dy = launchY - dragY;
+        paint.setStrokeWidth(3f);
+        paint.setColor(Color.argb(170, 255, 255, 255));
+        float px = launchX;
+        float py = launchY;
+        float vx = dx * POWER_SCALE;
+        float vy = dy * POWER_SCALE;
+        Level level = level();
+        for (int i = 0; i < 30; i++) {
+            float t = i * 0.07f;
+            float x = px + vx * t + 0.5f * level.wind * t * t;
+            float y = py + vy * t + 0.5f * BASE_GRAVITY * level.gravityScale * t * t;
+            if (y > groundY || x < 0 || x > screenW) {
+                break;
+            }
+            canvas.drawCircle(x, y, 4f, paint);
+        }
+    }
+
+    private void drawProjectile(Canvas canvas, Projectile type) {
+        paint.setStyle(Paint.Style.FILL);
+        if (type == Projectile.ARROW) {
+            canvas.save();
+            canvas.rotate(projectileRotation, projectileX, projectileY);
+            paint.setStrokeWidth(8f);
+            paint.setColor(Color.rgb(220, 180, 85));
+            canvas.drawLine(projectileX - 34f, projectileY, projectileX + 36f, projectileY, paint);
+            paint.setStyle(Paint.Style.FILL);
+            Path head = new Path();
+            head.moveTo(projectileX + 48f, projectileY);
+            head.lineTo(projectileX + 24f, projectileY - 14f);
+            head.lineTo(projectileX + 24f, projectileY + 14f);
+            head.close();
+            paint.setColor(Color.rgb(235, 235, 235));
+            canvas.drawPath(head, paint);
+            paint.setColor(Color.rgb(120, 170, 230));
+            canvas.drawCircle(projectileX - 38f, projectileY, 8f, paint);
+            canvas.restore();
+        } else if (type == Projectile.PAPER_BALL) {
+            paint.setColor(Color.rgb(235, 235, 225));
+            canvas.drawCircle(projectileX, projectileY, projectileRadius, paint);
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(3f);
+            paint.setColor(Color.rgb(170, 170, 165));
+            canvas.drawLine(projectileX - 8f, projectileY - 5f, projectileX + 9f, projectileY + 7f, paint);
+            canvas.drawLine(projectileX - 6f, projectileY + 8f, projectileX + 7f, projectileY - 8f, paint);
+        } else if (type == Projectile.STONE) {
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(Color.rgb(115, 118, 124));
+            canvas.drawCircle(projectileX, projectileY, projectileRadius, paint);
+            paint.setColor(Color.rgb(80, 82, 88));
+            canvas.drawCircle(projectileX + 5f, projectileY - 4f, projectileRadius * 0.35f, paint);
+        } else {
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(Color.rgb(255, 145, 70));
+            canvas.drawCircle(projectileX, projectileY, projectileRadius, paint);
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(4f);
+            paint.setColor(Color.rgb(120, 75, 45));
+            canvas.drawCircle(projectileX, projectileY, projectileRadius * 0.72f, paint);
+        }
+    }
+
+    private void drawHud(Canvas canvas) {
+        Level level = level();
+        paint.setStyle(Paint.Style.FILL);
+        paint.setColor(Color.argb(140, 0, 0, 0));
+        canvas.drawRoundRect(new RectF(18, 16, screenW - 18, 88), 18f, 18f, paint);
+        textPaint.setTextAlign(Paint.Align.LEFT);
+        textPaint.setColor(Color.WHITE);
+        canvas.drawText("Mira Real", 36f, 63f, textPaint);
+        smallTextPaint.setTextAlign(Paint.Align.RIGHT);
+        smallTextPaint.setColor(Color.WHITE);
+        String info = String.format(Locale.getDefault(), "Fase %d/%d • %s • Tentativas: %d", levelIndex + 1, levels.size(), level.name, attempts);
+        canvas.drawText(info, screenW - 36f, 61f, smallTextPaint);
+
+        smallTextPaint.setTextAlign(Paint.Align.LEFT);
+        smallTextPaint.setColor(Color.rgb(210, 220, 230));
+        String wind = Math.abs(level.wind) < 1f ? "sem vento" : (level.wind > 0 ? "vento →" : "vento ←");
+        canvas.drawText("Arraste para trás, solte e acerte. " + wind, 36f, screenH - 28f, smallTextPaint);
+    }
+
+    private void drawStateMessage(Canvas canvas) {
+        if (state == GameState.AIMING || state == GameState.FLYING) {
             return;
         }
-        battery -= BATTERY_COST;
-        lightTimer = LIGHT_DURATION;
-        dangerTimer = ENEMY_ATTRACTION_TIME;
-        lastPulseX = playerX;
-        lastPulseY = playerY;
-    }
+        paint.setStyle(Paint.Style.FILL);
+        paint.setColor(Color.argb(190, 0, 0, 0));
+        canvas.drawRect(0, 0, screenW, screenH, paint);
 
-    private void loadLevel(int index) {
-        levelIndex = index;
-        String[] map = levels[index];
-        rows = map.length;
-        cols = map[0].length();
-        tiles = new int[rows][cols];
-        enemies.clear();
-        for (int y = 0; y < rows; y++) {
-            for (int x = 0; x < cols; x++) {
-                char c = map[y].charAt(x);
-                if (c == '#') {
-                    tiles[y][x] = WALL;
-                } else if (c == 'P') {
-                    startX = x + 0.5f;
-                    startY = y + 0.5f;
-                } else if (c == 'E') {
-                    tiles[y][x] = EXIT;
-                    exitX = x + 0.5f;
-                    exitY = y + 0.5f;
-                }
-            }
+        textPaint.setTextAlign(Paint.Align.CENTER);
+        textPaint.setColor(Color.WHITE);
+        String title;
+        String subtitle;
+        if (state == GameState.SUCCESS) {
+            title = "Acertou!";
+            subtitle = "Estrelas: " + stars + "  • toque para continuar";
+        } else if (state == GameState.FINISHED) {
+            title = "Você completou o MVP!";
+            subtitle = "Toque para jogar de novo";
+        } else {
+            title = "Errou!";
+            subtitle = "Toque para tentar novamente";
         }
-        playerX = startX;
-        playerY = startY;
-        battery = BATTERY_MAX;
-        lightTimer = 0f;
-        dangerTimer = 0f;
-        moveX = 0f;
-        moveY = 0f;
-        state = GameState.PLAYING;
-        message = "";
-        lastPulseX = startX;
-        lastPulseY = startY;
-        spawnEnemies(index + 1);
+        canvas.drawText(title, screenW / 2f, screenH / 2f - 24f, textPaint);
+        smallTextPaint.setTextAlign(Paint.Align.CENTER);
+        smallTextPaint.setColor(Color.rgb(220, 220, 220));
+        canvas.drawText(subtitle, screenW / 2f, screenH / 2f + 28f, smallTextPaint);
     }
 
-    private void spawnEnemies(int amount) {
-        int spawned = 0;
-        for (int y = rows - 2; y >= 1 && spawned < amount; y--) {
-            for (int x = cols - 2; x >= 1 && spawned < amount; x--) {
-                if (tiles[y][x] == EMPTY && distance(x + 0.5f, y + 0.5f, startX, startY) > 5f && distance(x + 0.5f, y + 0.5f, exitX, exitY) > 1.5f) {
-                    enemies.add(new Enemy(x + 0.5f, y + 0.5f));
-                    spawned++;
-                }
-            }
+    private float currentTargetX(Level level) {
+        float base = level.targetNX * screenW;
+        if (level.moveRangeNX == 0f) {
+            return base;
         }
+        return base + (float) Math.sin(gameTime * level.moveSpeed) * level.moveRangeNX * screenW;
     }
 
-    private boolean collides(float x, float y, float radius) {
-        int minX = (int) Math.floor(x - radius);
-        int maxX = (int) Math.floor(x + radius);
-        int minY = (int) Math.floor(y - radius);
-        int maxY = (int) Math.floor(y + radius);
-        for (int ty = minY; ty <= maxY; ty++) {
-            for (int tx = minX; tx <= maxX; tx++) {
-                if (tx < 0 || ty < 0 || tx >= cols || ty >= rows || tiles[ty][tx] == WALL) {
-                    return true;
-                }
-            }
+    private RectF targetRect(Level level, float tx, float ty) {
+        float w = screenW * (level.mode == Mode.CUP ? 0.075f : 0.095f);
+        float h = screenH * (level.mode == Mode.CUP ? 0.13f : 0.16f);
+        return new RectF(tx - w / 2f, ty - h / 2f, tx + w / 2f, ty + h / 2f);
+    }
+
+    private float targetRadius(Level level) {
+        if (level.mode == Mode.LAMP) {
+            return Math.max(18f, screenH * 0.040f);
         }
-        return false;
+        return Math.max(28f, screenH * 0.065f);
     }
 
-    private boolean isVisible(float x, float y) {
-        float radius = lightTimer > 0f ? LIGHT_RADIUS : SAFE_REVEAL_RADIUS;
-        return distance(x, y, playerX, playerY) <= radius;
-    }
-
-    private void calculateBoard(int width, int height) {
-        if (width <= 0 || height <= 0 || cols == 0 || rows == 0) {
-            return;
+    private float radiusFor(Projectile projectile) {
+        if (projectile == Projectile.ARROW) {
+            return 12f;
         }
-        float hudPadding = 28f;
-        cellSize = Math.min((width - hudPadding * 2f) / cols, (height - 110f) / rows);
-        offsetX = (width - cols * cellSize) / 2f;
-        offsetY = Math.max(92f, (height - rows * cellSize) / 2f);
+        if (projectile == Projectile.PAPER_BALL) {
+            return 18f;
+        }
+        if (projectile == Projectile.STONE) {
+            return 16f;
+        }
+        return 17f;
     }
 
-    private float worldX(float tileX) {
-        return offsetX + tileX * cellSize;
-    }
-
-    private float worldY(float tileY) {
-        return offsetY + tileY * cellSize;
+    private boolean circleIntersectsRect(float cx, float cy, float radius, RectF rect) {
+        float nearestX = clamp(cx, rect.left, rect.right);
+        float nearestY = clamp(cy, rect.top, rect.bottom);
+        float dx = cx - nearestX;
+        float dy = cy - nearestY;
+        return dx * dx + dy * dy <= radius * radius;
     }
 
     private float distance(float ax, float ay, float bx, float by) {
@@ -492,63 +695,86 @@ public class GameView extends SurfaceView implements Runnable, SurfaceHolder.Cal
         return Math.max(min, Math.min(max, value));
     }
 
-    private void sleepToSaveBattery() {
-        try {
-            Thread.sleep(16L);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-    }
-
     private enum GameState {
-        PLAYING,
-        VICTORY,
-        DEFEAT
+        AIMING,
+        FLYING,
+        SUCCESS,
+        FAILED,
+        FINISHED
     }
 
-    private class Enemy {
-        float x;
-        float y;
-        float wanderAngle;
+    private enum Mode {
+        BULLSEYE,
+        BIN,
+        LAMP,
+        CUP
+    }
 
-        Enemy(float x, float y) {
-            this.x = x;
-            this.y = y;
-            this.wanderAngle = (x + y) % 6.28f;
+    private enum Projectile {
+        ARROW,
+        PAPER_BALL,
+        STONE,
+        BALL
+    }
+
+    private static class Level {
+        final String name;
+        final Mode mode;
+        final Projectile projectile;
+        final float launchNX;
+        final float launchNY;
+        final float targetNX;
+        final float targetNY;
+        final float wind;
+        final float gravityScale;
+        final float bounce;
+        final float airDrag;
+        float moveRangeNX;
+        float moveSpeed;
+        final List<Obstacle> obstacles = new ArrayList<>();
+
+        Level(String name, Mode mode, Projectile projectile, float launchNX, float launchNY,
+              float targetNX, float targetNY, float wind, float gravityScale, float bounce) {
+            this.name = name;
+            this.mode = mode;
+            this.projectile = projectile;
+            this.launchNX = launchNX;
+            this.launchNY = launchNY;
+            this.targetNX = targetNX;
+            this.targetNY = targetNY;
+            this.wind = wind;
+            this.gravityScale = gravityScale;
+            this.bounce = bounce;
+            this.airDrag = projectile == Projectile.PAPER_BALL ? 0.16f : 0.045f;
         }
 
-        void update(float dt) {
-            float targetX;
-            float targetY;
-            float speed;
-            if (dangerTimer > 0f) {
-                targetX = lastPulseX;
-                targetY = lastPulseY;
-                speed = ENEMY_HUNT_SPEED;
-            } else {
-                wanderAngle += dt * 0.8f;
-                targetX = x + (float) Math.cos(wanderAngle);
-                targetY = y + (float) Math.sin(wanderAngle * 0.7f);
-                speed = ENEMY_PATROL_SPEED;
-            }
-            float dx = targetX - x;
-            float dy = targetY - y;
-            float length = (float) Math.sqrt(dx * dx + dy * dy);
-            if (length < 0.05f) {
-                return;
-            }
-            float stepX = dx / length * speed * dt;
-            float stepY = dy / length * speed * dt;
-            if (!collides(x + stepX, y, ENEMY_RADIUS)) {
-                x += stepX;
-            } else {
-                wanderAngle += 1.4f;
-            }
-            if (!collides(x, y + stepY, ENEMY_RADIUS)) {
-                y += stepY;
-            } else {
-                wanderAngle += 1.1f;
-            }
+        Level addObstacle(float left, float top, float right, float bottom) {
+            obstacles.add(new Obstacle(left, top, right, bottom));
+            return this;
+        }
+
+        Level moving(float rangeNX, float speed) {
+            this.moveRangeNX = rangeNX;
+            this.moveSpeed = speed;
+            return this;
+        }
+    }
+
+    private static class Obstacle {
+        final float left;
+        final float top;
+        final float right;
+        final float bottom;
+
+        Obstacle(float left, float top, float right, float bottom) {
+            this.left = left;
+            this.top = top;
+            this.right = right;
+            this.bottom = bottom;
+        }
+
+        RectF toRect(float w, float h) {
+            return new RectF(left * w, top * h, right * w, bottom * h);
         }
     }
 }
