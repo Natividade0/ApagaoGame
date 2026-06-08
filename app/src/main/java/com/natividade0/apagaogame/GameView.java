@@ -15,46 +15,31 @@ import java.util.List;
 import java.util.Locale;
 
 public class GameView extends SurfaceView implements Runnable, SurfaceHolder.Callback {
-    private static final float BASE_GRAVITY = 2.35f;
-    private static final float START_HEIGHT = 0.08f;
-    private static final float MIN_PULL = 24f;
+    private static final float POWER = 5.9f;
+    private static final float GRAVITY = 650f;
+    private static final float MIN_PULL = 22f;
 
     private final SurfaceHolder holder;
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint titlePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Paint smallTextPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final List<Level> levels = new ArrayList<>();
 
     private Thread thread;
     private volatile boolean running;
-
-    private int screenW;
-    private int screenH;
-    private float horizonY;
-    private float nearY;
-    private float launchScreenX;
-    private float launchScreenY;
-    private float gameTime;
+    private int w, h;
+    private float groundY;
+    private float time;
 
     private Scene scene = Scene.MENU;
     private int levelIndex;
     private int attempts;
     private int stars;
 
+    private float launchX, launchY, dragX, dragY;
     private boolean dragging;
-    private float dragX;
-    private float dragY;
-
-    private float pX;
-    private float pY;
-    private float pZ;
-    private float vX;
-    private float vY;
-    private float vZ;
-    private float spin;
-    private float stopTimer;
-    private float effectTimer;
-    private float cameraShake;
+    private float x, y, vx, vy, radius, rotation;
+    private float stopTimer, fxTimer, shakeTimer;
 
     public GameView(Context context) {
         super(context);
@@ -66,902 +51,367 @@ public class GameView extends SurfaceView implements Runnable, SurfaceHolder.Cal
     }
 
     private void setupPaints() {
+        titlePaint.setColor(Color.WHITE);
+        titlePaint.setFakeBoldText(true);
+        titlePaint.setTextAlign(Paint.Align.CENTER);
         textPaint.setColor(Color.WHITE);
-        textPaint.setFakeBoldText(true);
         textPaint.setTextAlign(Paint.Align.CENTER);
-        smallTextPaint.setColor(Color.WHITE);
-        smallTextPaint.setTextAlign(Paint.Align.CENTER);
     }
 
     private void setupLevels() {
-        levels.add(new Level("Treino de Flecha", Mode.BULLSEYE, Projectile.ARROW,
-                0.00f, 0.68f, 0.52f, 0f, 1.00f, 0.12f));
-        levels.add(new Level("Bolinha no Lixo", Mode.BIN, Projectile.PAPER,
-                -0.08f, 0.66f, 0.16f, 0f, 0.92f, 0.34f));
-        levels.add(new Level("Pedra na Lampada", Mode.LAMP, Projectile.STONE,
-                0.12f, 0.74f, 0.88f, -0.04f, 1.05f, 0.22f));
-        levels.add(new Level("Alvo com Vento", Mode.BULLSEYE, Projectile.ARROW,
-                -0.16f, 0.76f, 0.55f, 0.12f, 1.00f, 0.12f));
-        levels.add(new Level("Copo no Fundo", Mode.CUP, Projectile.BALL,
-                0.10f, 0.72f, 0.18f, 0f, 0.94f, 0.55f));
-        levels.add(new Level("Mesa no Caminho", Mode.BIN, Projectile.BALL,
-                0.16f, 0.78f, 0.16f, 0f, 0.96f, 0.58f)
-                .block(0.00f, 0.46f, 0.42f, 0.16f, 0.17f));
-        levels.add(new Level("Lampada Distante", Mode.LAMP, Projectile.STONE,
-                -0.12f, 0.84f, 0.90f, -0.08f, 1.08f, 0.24f)
-                .block(0.18f, 0.58f, 0.22f, 0.13f, 0.45f));
-        levels.add(new Level("Trickshot 3D", Mode.BULLSEYE, Projectile.BALL,
-                0.20f, 0.86f, 0.45f, 0.06f, 0.98f, 0.70f)
-                .block(-0.18f, 0.45f, 0.22f, 0.16f, 0.34f)
-                .moving(0.12f, 1.15f));
+        levels.add(new Level("Flecha no alvo", Mode.TARGET, Obj.ARROW, 0.13f, 0.72f, 0.68f, 0.45f, 0f, 0.92f, 0.12f, Theme.RANGE));
+        levels.add(new Level("Bolinha no cesto", Mode.BIN, Obj.PAPER, 0.15f, 0.68f, 0.67f, 0.62f, 0f, 0.88f, 0.32f, Theme.OFFICE));
+        levels.add(new Level("Pedra na lampada", Mode.LAMP, Obj.STONE, 0.13f, 0.72f, 0.70f, 0.32f, -10f, 0.96f, 0.25f, Theme.STREET));
+        levels.add(new Level("Flecha com vento", Mode.TARGET, Obj.ARROW, 0.13f, 0.72f, 0.72f, 0.42f, 25f, 0.92f, 0.12f, Theme.RANGE));
+        levels.add(new Level("Cesto com quique", Mode.BIN, Obj.BALL, 0.14f, 0.68f, 0.70f, 0.63f, 0f, 0.92f, 0.62f, Theme.OFFICE).obstacle(0.46f, 0.71f, 0.57f, 0.77f));
+        levels.add(new Level("Pedra com curva", Mode.LAMP, Obj.STONE, 0.13f, 0.74f, 0.74f, 0.30f, -35f, 0.98f, 0.28f, Theme.STREET).obstacle(0.50f, 0.39f, 0.56f, 0.82f));
+        levels.add(new Level("Copo em movimento", Mode.CUP, Obj.BALL, 0.13f, 0.68f, 0.68f, 0.63f, 0f, 0.92f, 0.56f, Theme.TABLE).moving(0.055f, 1.05f));
+        levels.add(new Level("Trickshot final", Mode.TARGET, Obj.STONE, 0.12f, 0.70f, 0.72f, 0.40f, 0f, 0.96f, 0.45f, Theme.RANGE).obstacle(0.38f, 0.57f, 0.46f, 0.84f).obstacle(0.62f, 0.26f, 0.68f, 0.60f));
     }
 
-    @Override
-    public void surfaceCreated(SurfaceHolder surfaceHolder) {
-        calculateScreen();
-        resetLevel(false);
-        resume();
-    }
-
-    @Override
-    public void surfaceChanged(SurfaceHolder surfaceHolder, int format, int width, int height) {
-        calculateScreen();
-        resetLevel(false);
-    }
-
-    @Override
-    public void surfaceDestroyed(SurfaceHolder surfaceHolder) {
-        pause();
-    }
+    @Override public void surfaceCreated(SurfaceHolder sh) { calc(); reset(false); resume(); }
+    @Override public void surfaceChanged(SurfaceHolder sh, int f, int width, int height) { calc(); reset(false); }
+    @Override public void surfaceDestroyed(SurfaceHolder sh) { pause(); }
 
     public void resume() {
-        if (running) {
-            return;
-        }
+        if (running) return;
         running = true;
-        thread = new Thread(this, "MiraReal25DLoop");
+        thread = new Thread(this, "MiraRealLoop");
         thread.start();
     }
 
     public void pause() {
         running = false;
         if (thread != null) {
-            try {
-                thread.join();
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
+            try { thread.join(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
         }
     }
 
-    @Override
-    public void run() {
+    @Override public void run() {
         long last = System.nanoTime();
         while (running) {
             long now = System.nanoTime();
-            float dt = Math.min(0.033f, (now - last) / 1_000_000_000f);
+            float dt = Math.min(0.033f, (now - last) / 1000000000f);
             last = now;
             update(dt);
             drawFrame();
-            try {
-                Thread.sleep(16L);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
+            try { Thread.sleep(16); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
         }
     }
 
-    private void calculateScreen() {
-        screenW = Math.max(1, getWidth());
-        screenH = Math.max(1, getHeight());
-        horizonY = screenH * 0.285f;
-        nearY = screenH * 0.895f;
-        launchScreenX = screenW * 0.50f;
-        launchScreenY = screenH * 0.815f;
-        textPaint.setTextSize(Math.max(42f, screenH * 0.065f));
-        smallTextPaint.setTextSize(Math.max(24f, screenH * 0.034f));
+    private void calc() {
+        w = Math.max(1, getWidth());
+        h = Math.max(1, getHeight());
+        groundY = h * 0.86f;
+        titlePaint.setTextSize(Math.max(40f, h * 0.07f));
+        textPaint.setTextSize(Math.max(22f, h * 0.035f));
     }
 
-    private Level level() {
-        return levels.get(levelIndex);
+    private Level level() { return levels.get(levelIndex); }
+
+    private void reset(boolean resetAttempts) {
+        Level l = level();
+        launchX = l.launchX * w;
+        launchY = l.launchY * h;
+        x = launchX; y = launchY; vx = 0; vy = 0; rotation = 0;
+        dragX = launchX; dragY = launchY; dragging = false;
+        radius = objRadius(l.obj);
+        stopTimer = 0; fxTimer = 0; shakeTimer = 0;
+        if (scene != Scene.MENU) scene = Scene.AIM;
+        if (resetAttempts) { attempts = 0; stars = 0; }
     }
 
     private void update(float dt) {
-        gameTime += dt;
-        effectTimer = Math.max(0f, effectTimer - dt);
-        cameraShake = Math.max(0f, cameraShake - dt * 2.5f);
+        time += dt;
+        fxTimer = Math.max(0, fxTimer - dt);
+        shakeTimer = Math.max(0, shakeTimer - dt);
+        if (scene != Scene.FLY) return;
 
-        if (scene != Scene.FLYING) {
-            return;
-        }
+        Level l = level();
+        vx += l.wind * dt;
+        vy += GRAVITY * l.gravity * dt;
+        vx *= Math.max(0.86f, 1f - l.drag * dt);
+        vy *= Math.max(0.92f, 1f - l.drag * 0.22f * dt);
+        x += vx * dt;
+        y += vy * dt;
+        rotation = (float) Math.toDegrees(Math.atan2(vy, vx));
 
-        Level level = level();
-        vX += level.wind * dt;
-        vY -= BASE_GRAVITY * level.gravityScale * dt;
-        vX *= Math.max(0.80f, 1f - level.drag * dt);
-        vZ *= Math.max(0.84f, 1f - level.drag * 0.55f * dt);
-        spin += (vX * 140f + vZ * 60f) * dt;
-
-        pX += vX * dt;
-        pY += vY * dt;
-        pZ += vZ * dt;
-
-        if (pY <= 0f) {
-            pY = 0f;
-            if (vY < 0f) {
-                vY = -vY * level.bounce;
-                vX *= 0.82f;
-                vZ *= 0.86f;
-                cameraShake = Math.max(cameraShake, 0.08f);
-            }
-            if (Math.abs(vY) < 0.10f) {
-                vY = 0f;
-            }
-        }
-
-        collideBlocks(level);
-
-        if (hitsTarget(level)) {
+        collide(l);
+        if (hit(l)) {
             stars = attempts <= 1 ? 3 : attempts <= 3 ? 2 : 1;
-            scene = Scene.SUCCESS;
-            effectTimer = 1.0f;
-            cameraShake = 0.35f;
+            scene = Scene.WIN;
+            fxTimer = 1f;
+            shakeTimer = 0.22f;
             return;
         }
 
-        float speed = Math.abs(vX) + Math.abs(vY) + Math.abs(vZ);
-        if (pY <= 0.01f && speed < 0.22f) {
-            stopTimer += dt;
-        } else {
-            stopTimer = 0f;
-        }
-
-        if (stopTimer > 0.75f || pZ > 1.18f || pZ < -0.10f || Math.abs(pX) > 1.35f) {
-            scene = Scene.FAILED;
-            effectTimer = 0.45f;
+        float speed = (float) Math.sqrt(vx * vx + vy * vy);
+        if (y + radius >= groundY - 1 && speed < 90) stopTimer += dt; else stopTimer = 0;
+        if (stopTimer > 0.8f || x < -220 || x > w + 220 || y > h + 220) {
+            scene = Scene.FAIL;
+            fxTimer = 0.35f;
         }
     }
 
-    private void collideBlocks(Level level) {
-        for (Block block : level.blocks) {
-            boolean closeZ = Math.abs(pZ - block.z) < block.depth;
-            boolean closeX = Math.abs(pX - block.x) < block.width;
-            if (closeZ && closeX && pY < block.height) {
-                if (Math.abs(vZ) > Math.abs(vX)) {
-                    vZ = -vZ * Math.max(0.25f, level.bounce);
-                } else {
-                    vX = -vX * Math.max(0.25f, level.bounce);
-                }
-                vY = Math.max(vY, 0.30f);
-                pZ -= 0.015f;
-                cameraShake = 0.18f;
-            }
+    private void collide(Level l) {
+        if (y + radius > groundY) {
+            y = groundY - radius;
+            vy = -Math.abs(vy) * l.bounce;
+            vx *= 0.88f;
+            shakeTimer = Math.max(shakeTimer, 0.08f);
+            if (Math.abs(vy) < 38) vy = 0;
+        }
+        if (x - radius < 0) { x = radius; vx = Math.abs(vx) * l.bounce; }
+        if (x + radius > w) { x = w - radius; vx = -Math.abs(vx) * l.bounce; }
+        for (Obstacle o : l.obstacles) {
+            RectF r = o.rect(w, h);
+            if (circleRect(x, y, radius, r)) resolve(r, l.bounce);
         }
     }
 
-    private boolean hitsTarget(Level level) {
-        float targetX = currentTargetX(level);
-        float dz = Math.abs(pZ - level.targetZ);
-        float dx = Math.abs(pX - targetX);
-        float dy = Math.abs(pY - level.targetH);
-
-        if (level.mode == Mode.BIN || level.mode == Mode.CUP) {
-            return dz < 0.075f && dx < 0.145f && dy < 0.22f && vY < 0.65f;
-        }
-        if (level.mode == Mode.LAMP) {
-            return dz < 0.075f && dx < 0.115f && dy < 0.18f;
-        }
-        return dz < 0.080f && dx < 0.125f && dy < 0.20f;
+    private void resolve(RectF r, float bounce) {
+        float left = Math.abs(x - r.left), right = Math.abs(x - r.right);
+        float top = Math.abs(y - r.top), bottom = Math.abs(y - r.bottom);
+        float min = Math.min(Math.min(left, right), Math.min(top, bottom));
+        if (min == left) { x = r.left - radius; vx = -Math.abs(vx) * bounce; }
+        else if (min == right) { x = r.right + radius; vx = Math.abs(vx) * bounce; }
+        else if (min == top) { y = r.top - radius; vy = -Math.abs(vy) * bounce; vx *= 0.9f; }
+        else { y = r.bottom + radius; vy = Math.abs(vy) * bounce; vx *= 0.9f; }
+        shakeTimer = 0.16f;
     }
 
-    private void resetLevel(boolean resetAttempts) {
-        pX = 0f;
-        pY = START_HEIGHT;
-        pZ = 0f;
-        vX = 0f;
-        vY = 0f;
-        vZ = 0f;
-        spin = 0f;
-        stopTimer = 0f;
-        effectTimer = 0f;
-        cameraShake = 0f;
-        dragging = false;
-        dragX = launchScreenX;
-        dragY = launchScreenY;
-        if (resetAttempts) {
-            attempts = 0;
-            stars = 0;
+    private boolean hit(Level l) {
+        float tx = targetX(l), ty = l.targetY * h;
+        if (l.mode == Mode.BIN || l.mode == Mode.CUP) {
+            RectF cup = targetRect(l, tx, ty);
+            return x > cup.left && x < cup.right && y > cup.top && y < cup.bottom && vy > -180;
         }
+        return distance(x, y, tx, ty) < radius + targetRadius(l);
     }
 
     private void shoot() {
-        float pull = distance(dragX, dragY, launchScreenX, launchScreenY);
-        if (pull < MIN_PULL) {
-            dragging = false;
-            return;
-        }
+        float dx = launchX - dragX, dy = launchY - dragY;
+        float pull = (float) Math.sqrt(dx * dx + dy * dy);
+        if (pull < MIN_PULL) { dragging = false; return; }
         float max = maxPull();
-        float power = clamp(pull / max, 0.08f, 1f);
-        float side = clamp((launchScreenX - dragX) / max, -1f, 1f);
-        float down = clamp((dragY - launchScreenY) / max, -0.35f, 1f);
-
-        Level level = level();
-        float mult = projectileSpeed(level.projectile);
-        vX = side * 0.92f * mult;
-        vZ = (0.62f + power * 1.72f) * mult;
-        vY = (0.52f + power * 1.25f + down * 0.25f) * level.arc;
-        pX = 0f;
-        pY = START_HEIGHT;
-        pZ = 0f;
+        if (pull > max) { dx = dx / pull * max; dy = dy / pull * max; }
+        float mult = speedMult(level().obj);
         attempts++;
-        stopTimer = 0f;
+        x = launchX; y = launchY;
+        vx = dx * POWER * mult;
+        vy = dy * POWER * mult;
+        scene = Scene.FLY;
         dragging = false;
-        scene = Scene.FLYING;
+        stopTimer = 0;
     }
 
-    @Override
-    public boolean onTouchEvent(MotionEvent event) {
-        float x = event.getX();
-        float y = event.getY();
-
-        if (event.getAction() == MotionEvent.ACTION_DOWN) {
-            if (scene == Scene.MENU) {
-                scene = Scene.AIMING;
-                resetLevel(true);
-                return true;
-            }
-            if (scene == Scene.SUCCESS) {
-                if (levelIndex < levels.size() - 1) {
-                    levelIndex++;
-                    attempts = 0;
-                    scene = Scene.AIMING;
-                    resetLevel(false);
-                } else {
-                    scene = Scene.FINISHED;
-                }
-                return true;
-            }
-            if (scene == Scene.FAILED) {
-                scene = Scene.AIMING;
-                resetLevel(false);
-                return true;
-            }
-            if (scene == Scene.FINISHED) {
-                levelIndex = 0;
-                attempts = 0;
-                scene = Scene.MENU;
-                resetLevel(true);
-                return true;
-            }
-            if (scene == Scene.FLYING) {
-                return true;
-            }
-            dragging = true;
-            dragX = x;
-            dragY = y;
-            clampDrag();
-            return true;
+    @Override public boolean onTouchEvent(MotionEvent e) {
+        if (w <= 0 || h <= 0) return true;
+        float px = e.getX(), py = e.getY();
+        if (e.getAction() == MotionEvent.ACTION_DOWN) {
+            if (scene == Scene.MENU) { scene = Scene.AIM; reset(true); return true; }
+            if (scene == Scene.WIN) { next(); return true; }
+            if (scene == Scene.FAIL) { reset(false); return true; }
+            if (scene == Scene.DONE) { levelIndex = 0; attempts = 0; scene = Scene.MENU; reset(true); return true; }
+            if (scene == Scene.FLY) return true;
+            dragging = true; dragX = px; dragY = py; clampDrag(); return true;
         }
-
-        if (event.getAction() == MotionEvent.ACTION_MOVE && dragging) {
-            dragX = x;
-            dragY = y;
-            clampDrag();
-            return true;
-        }
-
-        if ((event.getAction() == MotionEvent.ACTION_UP || event.getAction() == MotionEvent.ACTION_CANCEL) && dragging) {
-            shoot();
-            return true;
-        }
+        if (e.getAction() == MotionEvent.ACTION_MOVE && dragging) { dragX = px; dragY = py; clampDrag(); return true; }
+        if ((e.getAction() == MotionEvent.ACTION_UP || e.getAction() == MotionEvent.ACTION_CANCEL) && dragging) { shoot(); return true; }
         return true;
     }
 
-    private void clampDrag() {
-        float pull = distance(dragX, dragY, launchScreenX, launchScreenY);
-        float max = maxPull();
-        if (pull > max) {
-            float dx = dragX - launchScreenX;
-            float dy = dragY - launchScreenY;
-            dragX = launchScreenX + dx / pull * max;
-            dragY = launchScreenY + dy / pull * max;
-        }
+    private void next() {
+        if (levelIndex < levels.size() - 1) { levelIndex++; attempts = 0; reset(false); }
+        else scene = Scene.DONE;
     }
 
-    private float maxPull() {
-        return Math.max(320f, Math.min(screenW * 0.38f, screenH * 0.52f));
+    private void clampDrag() {
+        float dx = dragX - launchX, dy = dragY - launchY;
+        float d = (float) Math.sqrt(dx * dx + dy * dy), max = maxPull();
+        if (d > max) { dragX = launchX + dx / d * max; dragY = launchY + dy / d * max; }
     }
+
+    private float maxPull() { return Math.max(330f, Math.min(w * 0.36f, h * 0.58f)); }
 
     private void drawFrame() {
-        Canvas canvas = null;
+        Canvas c = null;
         try {
-            canvas = holder.lockCanvas();
-            if (canvas != null) {
-                drawGame(canvas);
-            }
-        } finally {
-            if (canvas != null) {
-                holder.unlockCanvasAndPost(canvas);
-            }
+            c = holder.lockCanvas();
+            if (c != null) draw(c);
+        } finally { if (c != null) holder.unlockCanvasAndPost(c); }
+    }
+
+    private void draw(Canvas c) {
+        float sx = shakeTimer > 0 ? (float) Math.sin(time * 80) * 8f * shakeTimer : 0;
+        float sy = shakeTimer > 0 ? (float) Math.cos(time * 70) * 6f * shakeTimer : 0;
+        c.save(); c.translate(sx, sy);
+        background(c);
+        if (scene != Scene.MENU) {
+            target(c, level());
+            obstacles(c, level());
+            launcher(c);
+            if (scene == Scene.AIM && dragging) aim(c);
+            projectile(c, level().obj);
+            if (fxTimer > 0) effect(c, level());
         }
+        c.restore();
+        hud(c);
+        overlay(c);
     }
 
-    private void drawGame(Canvas canvas) {
-        float shakeX = cameraShake > 0f ? (float) Math.sin(gameTime * 75f) * cameraShake * 18f : 0f;
-        float shakeY = cameraShake > 0f ? (float) Math.cos(gameTime * 92f) * cameraShake * 12f : 0f;
-        canvas.save();
-        canvas.translate(shakeX, shakeY);
-
-        drawSkyAndRoom(canvas);
-        drawPerspectiveFloor(canvas);
-        drawScenery(canvas, level());
-        drawBlocks(canvas, level());
-        drawTarget(canvas, level());
-        if (scene == Scene.AIMING && dragging) {
-            drawAim(canvas);
-        }
-        drawProjectile(canvas, level().projectile);
-        drawLauncher(canvas);
-        if (effectTimer > 0f) {
-            drawHitEffect(canvas, level());
-        }
-        canvas.restore();
-
-        drawHud(canvas);
-        drawOverlay(canvas);
-    }
-
-    private void drawSkyAndRoom(Canvas canvas) {
-        paint.setStyle(Paint.Style.FILL);
-        paint.setColor(Color.rgb(34, 38, 48));
-        canvas.drawRect(0, 0, screenW, horizonY, paint);
-        paint.setColor(Color.rgb(24, 28, 36));
-        canvas.drawRect(0, horizonY, screenW, screenH, paint);
-
-        paint.setColor(Color.rgb(44, 50, 64));
-        Path leftWall = new Path();
-        leftWall.moveTo(0, horizonY);
-        leftWall.lineTo(screenW * 0.5f, horizonY);
-        leftWall.lineTo(0, screenH);
-        leftWall.close();
-        canvas.drawPath(leftWall, paint);
-
-        paint.setColor(Color.rgb(39, 45, 58));
-        Path rightWall = new Path();
-        rightWall.moveTo(screenW, horizonY);
-        rightWall.lineTo(screenW * 0.5f, horizonY);
-        rightWall.lineTo(screenW, screenH);
-        rightWall.close();
-        canvas.drawPath(rightWall, paint);
-    }
-
-    private void drawPerspectiveFloor(Canvas canvas) {
-        Path floor = new Path();
-        floor.moveTo(screenW * 0.5f, horizonY);
-        floor.lineTo(screenW, screenH);
-        floor.lineTo(0, screenH);
-        floor.close();
-        paint.setStyle(Paint.Style.FILL);
-        paint.setColor(Color.rgb(54, 58, 66));
-        canvas.drawPath(floor, paint);
-
-        paint.setStyle(Paint.Style.STROKE);
-        paint.setStrokeWidth(2f);
-        paint.setColor(Color.argb(80, 255, 255, 255));
-        for (int i = -5; i <= 5; i++) {
-            float nearX = screenW * 0.5f + i * screenW * 0.12f;
-            canvas.drawLine(screenW * 0.5f, horizonY, nearX, screenH, paint);
-        }
-        for (int i = 1; i <= 9; i++) {
-            float z = i / 10f;
-            float y = floorY(z);
-            float half = screenW * (0.52f - z * 0.35f);
-            canvas.drawLine(screenW * 0.5f - half, y, screenW * 0.5f + half, y, paint);
-        }
-    }
-
-    private void drawScenery(Canvas canvas, Level level) {
-        paint.setStyle(Paint.Style.FILL);
-        if (level.mode == Mode.BIN || level.mode == Mode.CUP) {
-            RectF table = tableRect(0.55f);
-            paint.setColor(Color.rgb(88, 58, 38));
-            canvas.drawRoundRect(table, 16f, 16f, paint);
-            paint.setColor(Color.rgb(120, 78, 48));
-            canvas.drawRect(table.left, table.top, table.right, table.top + 18f, paint);
-        }
-        if (level.mode == Mode.LAMP) {
-            paint.setColor(Color.rgb(24, 24, 30));
-            canvas.drawRect(screenW * 0.14f, 0, screenW * 0.86f, horizonY * 0.96f, paint);
-            paint.setColor(Color.rgb(70, 72, 82));
-            canvas.drawRect(screenW * 0.18f, 24f, screenW * 0.82f, horizonY * 0.92f, paint);
-        }
-    }
-
-    private RectF tableRect(float z) {
-        float y = floorY(z) + 10f;
-        float s = scale(z);
-        float w = screenW * 0.62f * s;
-        float h = screenH * 0.11f * s;
-        return new RectF(screenW * 0.5f - w / 2f, y - h, screenW * 0.5f + w / 2f, y + h * 0.25f);
-    }
-
-    private void drawBlocks(Canvas canvas, Level level) {
-        for (Block block : level.blocks) {
-            float cx = sx(block.x, block.z);
-            float base = floorY(block.z);
-            float s = scale(block.z);
-            float w = screenW * block.width * s;
-            float h = screenH * block.height * 0.60f * s;
-            RectF r = new RectF(cx - w, base - h, cx + w, base);
-            paint.setStyle(Paint.Style.FILL);
-            paint.setColor(Color.rgb(105, 111, 126));
-            canvas.drawRoundRect(r, 10f, 10f, paint);
-            paint.setColor(Color.rgb(70, 74, 88));
-            canvas.drawRect(r.left, r.bottom - 8f * s, r.right, r.bottom, paint);
-        }
-    }
-
-    private void drawTarget(Canvas canvas, Level level) {
-        float tx = currentTargetX(level);
-        float x = sx(tx, level.targetZ);
-        float y = sy(level.targetH, level.targetZ);
-        float s = scale(level.targetZ);
-
-        if (level.mode == Mode.BULLSEYE) {
-            drawBullseye(canvas, x, y, 72f * s);
-            paint.setStyle(Paint.Style.FILL);
-            paint.setColor(Color.rgb(95, 70, 45));
-            canvas.drawRect(x - 5f * s, y + 72f * s, x + 5f * s, floorY(level.targetZ), paint);
-        } else if (level.mode == Mode.BIN) {
-            drawBin(canvas, x, level.targetZ, s);
-        } else if (level.mode == Mode.LAMP) {
-            drawLamp(canvas, x, y, s);
-        } else {
-            drawCup(canvas, x, level.targetZ, s);
-        }
-    }
-
-    private void drawBullseye(Canvas canvas, float x, float y, float r) {
-        paint.setStyle(Paint.Style.FILL);
-        paint.setColor(Color.rgb(238, 238, 238));
-        canvas.drawCircle(x, y, r, paint);
-        paint.setColor(Color.rgb(220, 55, 55));
-        canvas.drawCircle(x, y, r * 0.74f, paint);
-        paint.setColor(Color.WHITE);
-        canvas.drawCircle(x, y, r * 0.48f, paint);
-        paint.setColor(Color.rgb(35, 130, 225));
-        canvas.drawCircle(x, y, r * 0.23f, paint);
-    }
-
-    private void drawBin(Canvas canvas, float x, float z, float s) {
-        float base = floorY(z);
-        float top = sy(0.20f, z);
-        float wTop = 76f * s;
-        float wBottom = 48f * s;
-        Path bin = new Path();
-        bin.moveTo(x - wTop, top);
-        bin.lineTo(x + wTop, top);
-        bin.lineTo(x + wBottom, base);
-        bin.lineTo(x - wBottom, base);
-        bin.close();
-        paint.setStyle(Paint.Style.FILL);
-        paint.setColor(Color.argb(125, 70, 190, 145));
-        canvas.drawPath(bin, paint);
-        paint.setStyle(Paint.Style.STROKE);
-        paint.setStrokeWidth(7f * s);
-        paint.setColor(Color.rgb(105, 235, 175));
-        canvas.drawPath(bin, paint);
-        canvas.drawLine(x - wTop, top, x + wTop, top, paint);
-    }
-
-    private void drawCup(Canvas canvas, float x, float z, float s) {
-        float base = floorY(z);
-        float top = sy(0.22f, z);
-        float wTop = 62f * s;
-        float wBottom = 36f * s;
-        Path cup = new Path();
-        cup.moveTo(x - wTop, top);
-        cup.lineTo(x + wTop, top);
-        cup.lineTo(x + wBottom, base);
-        cup.lineTo(x - wBottom, base);
-        cup.close();
-        paint.setStyle(Paint.Style.FILL);
-        paint.setColor(Color.argb(120, 90, 170, 245));
-        canvas.drawPath(cup, paint);
-        paint.setStyle(Paint.Style.STROKE);
-        paint.setStrokeWidth(6f * s);
-        paint.setColor(Color.rgb(150, 220, 255));
-        canvas.drawPath(cup, paint);
-    }
-
-    private void drawLamp(Canvas canvas, float x, float y, float s) {
-        paint.setStyle(Paint.Style.STROKE);
-        paint.setStrokeWidth(4f * s);
-        paint.setColor(Color.rgb(150, 150, 160));
-        canvas.drawLine(x, 0, x, y - 42f * s, paint);
-        paint.setStyle(Paint.Style.FILL);
-        paint.setColor(Color.argb(55, 255, 225, 90));
-        canvas.drawCircle(x, y, 76f * s, paint);
-        paint.setColor(Color.rgb(255, 226, 92));
-        canvas.drawCircle(x, y, 34f * s, paint);
-        paint.setColor(Color.rgb(88, 80, 58));
-        canvas.drawRect(x - 20f * s, y - 48f * s, x + 20f * s, y - 28f * s, paint);
-    }
-
-    private void drawAim(Canvas canvas) {
-        paint.setStyle(Paint.Style.STROKE);
-        paint.setStrokeWidth(7f);
-        paint.setColor(Color.rgb(255, 202, 76));
-        canvas.drawLine(launchScreenX, launchScreenY, dragX, dragY, paint);
-
-        float power = clamp(distance(dragX, dragY, launchScreenX, launchScreenY) / maxPull(), 0f, 1f);
-        paint.setStyle(Paint.Style.FILL);
-        paint.setColor(Color.rgb(255, 202, 76));
-        canvas.drawRoundRect(new RectF(40, 106, 40 + screenW * 0.34f * power, 132), 12f, 12f, paint);
-        paint.setStyle(Paint.Style.STROKE);
-        paint.setStrokeWidth(3f);
-        paint.setColor(Color.WHITE);
-        canvas.drawRoundRect(new RectF(40, 106, 40 + screenW * 0.34f, 132), 12f, 12f, paint);
-
-        simulatePreview(canvas);
-    }
-
-    private void simulatePreview(Canvas canvas) {
-        float pull = distance(dragX, dragY, launchScreenX, launchScreenY);
-        float max = maxPull();
-        float power = clamp(pull / max, 0.08f, 1f);
-        float side = clamp((launchScreenX - dragX) / max, -1f, 1f);
-        float down = clamp((dragY - launchScreenY) / max, -0.35f, 1f);
-        Level level = level();
-        float simX = 0f;
-        float simY = START_HEIGHT;
-        float simZ = 0f;
-        float simVX = side * 0.92f * projectileSpeed(level.projectile);
-        float simVZ = (0.62f + power * 1.72f) * projectileSpeed(level.projectile);
-        float simVY = (0.52f + power * 1.25f + down * 0.25f) * level.arc;
-
-        paint.setStyle(Paint.Style.FILL);
-        paint.setColor(Color.argb(190, 255, 255, 255));
-        for (int i = 0; i < 42; i++) {
-            float dt = 0.055f;
-            simVX += level.wind * dt;
-            simVY -= BASE_GRAVITY * level.gravityScale * dt;
-            simX += simVX * dt;
-            simY += simVY * dt;
-            simZ += simVZ * dt;
-            if (simY < 0f) {
-                simY = 0f;
-                simVY = -simVY * level.bounce;
-                simVZ *= 0.86f;
-            }
-            if (simZ > 1.12f || Math.abs(simX) > 1.2f) {
-                break;
-            }
-            float s = scale(simZ);
-            canvas.drawCircle(sx(simX, simZ), sy(simY, simZ), Math.max(2f, 5f * s), paint);
-        }
-    }
-
-    private void drawProjectile(Canvas canvas, Projectile type) {
-        float x = sx(pX, pZ);
-        float y = sy(pY, pZ);
-        float s = scale(pZ);
-        float radius = projectileRadius(type) * s;
-
-        drawShadow(canvas, pX, pZ, radius);
-
-        if (type == Projectile.ARROW) {
-            canvas.save();
-            canvas.rotate((float) Math.toDegrees(Math.atan2(-vY, vZ)) * 0.35f, x, y);
-            paint.setStyle(Paint.Style.STROKE);
-            paint.setStrokeWidth(7f * s);
-            paint.setColor(Color.rgb(225, 182, 86));
-            canvas.drawLine(x - 48f * s, y, x + 44f * s, y, paint);
-            paint.setStyle(Paint.Style.FILL);
-            Path head = new Path();
-            head.moveTo(x + 60f * s, y);
-            head.lineTo(x + 32f * s, y - 16f * s);
-            head.lineTo(x + 32f * s, y + 16f * s);
-            head.close();
-            paint.setColor(Color.rgb(240, 240, 240));
-            canvas.drawPath(head, paint);
-            canvas.restore();
-            return;
-        }
-
-        canvas.save();
-        canvas.rotate(spin, x, y);
-        paint.setStyle(Paint.Style.FILL);
-        if (type == Projectile.PAPER) {
-            paint.setColor(Color.rgb(235, 235, 225));
-            canvas.drawCircle(x, y, radius, paint);
-            paint.setStyle(Paint.Style.STROKE);
-            paint.setStrokeWidth(3f * s);
-            paint.setColor(Color.rgb(166, 166, 160));
-            canvas.drawLine(x - radius * 0.6f, y, x + radius * 0.5f, y + radius * 0.3f, paint);
-            canvas.drawLine(x - radius * 0.2f, y + radius * 0.6f, x + radius * 0.4f, y - radius * 0.6f, paint);
-        } else if (type == Projectile.STONE) {
-            paint.setColor(Color.rgb(112, 116, 124));
-            canvas.drawCircle(x, y, radius, paint);
-            paint.setColor(Color.rgb(74, 78, 86));
-            canvas.drawCircle(x + radius * 0.35f, y - radius * 0.25f, radius * 0.30f, paint);
-        } else {
-            paint.setColor(Color.rgb(255, 145, 70));
-            canvas.drawCircle(x, y, radius, paint);
-            paint.setStyle(Paint.Style.STROKE);
-            paint.setStrokeWidth(4f * s);
-            paint.setColor(Color.rgb(120, 72, 42));
-            canvas.drawCircle(x, y, radius * 0.72f, paint);
-        }
-        canvas.restore();
-    }
-
-    private void drawShadow(Canvas canvas, float worldX, float worldZ, float radius) {
-        float x = sx(worldX, worldZ);
-        float y = floorY(worldZ);
-        float h = clamp(pY, 0f, 1.2f);
-        float alpha = clamp(150f - h * 90f, 25f, 150f);
-        paint.setStyle(Paint.Style.FILL);
-        paint.setColor(Color.argb((int) alpha, 0, 0, 0));
-        RectF shadow = new RectF(x - radius * 1.5f, y - radius * 0.35f, x + radius * 1.5f, y + radius * 0.35f);
-        canvas.drawOval(shadow, paint);
-    }
-
-    private void drawLauncher(Canvas canvas) {
-        paint.setStyle(Paint.Style.FILL);
-        paint.setColor(Color.rgb(45, 32, 24));
-        canvas.drawOval(new RectF(launchScreenX - 70f, launchScreenY + 28f, launchScreenX + 70f, launchScreenY + 70f), paint);
-        paint.setStyle(Paint.Style.STROKE);
-        paint.setStrokeWidth(12f);
-        paint.setColor(Color.rgb(158, 96, 48));
-        canvas.drawLine(launchScreenX - 32f, launchScreenY + 20f, launchScreenX - 54f, launchScreenY - 52f, paint);
-        canvas.drawLine(launchScreenX + 32f, launchScreenY + 20f, launchScreenX + 54f, launchScreenY - 52f, paint);
-        paint.setStrokeWidth(6f);
-        paint.setColor(Color.rgb(235, 205, 120));
-        canvas.drawLine(launchScreenX - 54f, launchScreenY - 52f, launchScreenX, launchScreenY, paint);
-        canvas.drawLine(launchScreenX + 54f, launchScreenY - 52f, launchScreenX, launchScreenY, paint);
-    }
-
-    private void drawHitEffect(Canvas canvas, Level level) {
-        float tx = currentTargetX(level);
-        float x = sx(tx, level.targetZ);
-        float y = sy(level.targetH, level.targetZ);
-        float progress = 1f - effectTimer;
-        float r = 30f + progress * 160f;
-        int alpha = (int) clamp(190f * effectTimer, 0f, 190f);
-        paint.setStyle(Paint.Style.STROKE);
-        paint.setStrokeWidth(8f * effectTimer + 2f);
-        paint.setColor(Color.argb(alpha, 255, 230, 90));
-        canvas.drawCircle(x, y, r, paint);
-        paint.setStyle(Paint.Style.FILL);
-        paint.setColor(Color.argb(alpha, 255, 245, 160));
-        for (int i = 0; i < 10; i++) {
-            double a = i * Math.PI * 2.0 / 10.0 + gameTime;
-            float px = x + (float) Math.cos(a) * r * 0.75f;
-            float py = y + (float) Math.sin(a) * r * 0.75f;
-            canvas.drawCircle(px, py, 5f + 5f * effectTimer, paint);
-        }
-    }
-
-    private void drawHud(Canvas canvas) {
-        paint.setStyle(Paint.Style.FILL);
-        paint.setColor(Color.argb(160, 0, 0, 0));
-        canvas.drawRoundRect(new RectF(18f, 16f, screenW - 18f, 92f), 20f, 20f, paint);
-
-        textPaint.setTextSize(Math.max(36f, screenH * 0.052f));
-        textPaint.setTextAlign(Paint.Align.LEFT);
-        textPaint.setColor(Color.WHITE);
-        canvas.drawText("Mira Real 3D Lite", 38f, 64f, textPaint);
-
-        smallTextPaint.setTextAlign(Paint.Align.RIGHT);
-        smallTextPaint.setColor(Color.rgb(225, 230, 240));
-        Level level = level();
-        String info = String.format(Locale.getDefault(), "Fase %d/%d  |  %s  |  Tentativas: %d", levelIndex + 1, levels.size(), level.name, attempts);
-        canvas.drawText(info, screenW - 36f, 62f, smallTextPaint);
-
-        smallTextPaint.setTextAlign(Paint.Align.LEFT);
-        smallTextPaint.setColor(Color.rgb(220, 225, 235));
-        String wind = Math.abs(level.wind) < 0.01f ? "sem vento" : (level.wind > 0f ? "vento para direita" : "vento para esquerda");
-        canvas.drawText("Puxe o estilingue, mire pela linha pontilhada e solte. " + wind, 36f, screenH - 28f, smallTextPaint);
-    }
-
-    private void drawOverlay(Canvas canvas) {
-        if (scene == Scene.AIMING || scene == Scene.FLYING) {
-            return;
-        }
-        paint.setStyle(Paint.Style.FILL);
-        paint.setColor(Color.argb(scene == Scene.MENU ? 210 : 178, 0, 0, 0));
-        canvas.drawRect(0, 0, screenW, screenH, paint);
-
-        textPaint.setTextAlign(Paint.Align.CENTER);
-        textPaint.setTextSize(Math.max(42f, screenH * 0.070f));
-        textPaint.setColor(Color.WHITE);
-        smallTextPaint.setTextAlign(Paint.Align.CENTER);
-        smallTextPaint.setTextSize(Math.max(24f, screenH * 0.036f));
-        smallTextPaint.setColor(Color.rgb(226, 230, 238));
-
+    private void background(Canvas c) {
         if (scene == Scene.MENU) {
-            canvas.drawText("MIRA REAL", screenW / 2f, screenH * 0.30f, textPaint);
-            smallTextPaint.setTextSize(Math.max(26f, screenH * 0.040f));
-            canvas.drawText("versao 3D Lite", screenW / 2f, screenH * 0.37f, smallTextPaint);
-            drawMenuCard(canvas, screenH * 0.48f, "Perspectiva 2.5D", "o alvo parece estar no fundo da cena");
-            drawMenuCard(canvas, screenH * 0.58f, "Fisica de arremesso", "forca, arco, vento, quique e sombra");
-            drawMenuCard(canvas, screenH * 0.68f, "Modos variados", "flecha, cesto, lampada, copo e trickshot");
-            canvas.drawText("Toque para jogar", screenW / 2f, screenH * 0.82f, textPaint);
+            c.drawColor(Color.rgb(17, 20, 29));
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(Color.rgb(35, 42, 62)); c.drawCircle(w * 0.18f, h * 0.20f, 90, paint);
+            paint.setColor(Color.rgb(45, 56, 78)); c.drawCircle(w * 0.82f, h * 0.30f, 120, paint);
+            paint.setColor(Color.rgb(55, 66, 88)); c.drawCircle(w * 0.50f, h * 0.76f, 180, paint);
             return;
         }
-
-        String title;
-        String subtitle;
-        if (scene == Scene.SUCCESS) {
-            title = "ACERTOU!";
-            subtitle = "Estrelas: " + stars + "   |   toque para continuar";
-        } else if (scene == Scene.FAILED) {
-            title = "QUASE!";
-            subtitle = "Toque para tentar de novo";
+        Level l = level();
+        if (l.theme == Theme.OFFICE) {
+            c.drawColor(Color.rgb(36, 40, 49)); floor(c, Color.rgb(68,55,45));
+            paint.setColor(Color.rgb(87,62,42)); c.drawRoundRect(new RectF(w*.26f, groundY-85, w*.83f, groundY-20), 14, 14, paint);
+        } else if (l.theme == Theme.STREET) {
+            c.drawColor(Color.rgb(42, 48, 60)); floor(c, Color.rgb(38,43,48));
+            paint.setColor(Color.rgb(20,24,31)); c.drawRect(w*.10f, h*.18f, w*.90f, groundY, paint);
+        } else if (l.theme == Theme.TABLE) {
+            c.drawColor(Color.rgb(32,34,43)); floor(c, Color.rgb(100,66,42));
+            paint.setColor(Color.rgb(130,84,48)); c.drawRect(0, groundY-80, w, groundY-56, paint);
         } else {
-            title = "MVP COMPLETO";
-            subtitle = "Toque para voltar ao menu";
+            c.drawColor(Color.rgb(24,29,39)); floor(c, Color.rgb(48,60,49));
         }
-        canvas.drawText(title, screenW / 2f, screenH * 0.45f, textPaint);
-        canvas.drawText(subtitle, screenW / 2f, screenH * 0.53f, smallTextPaint);
     }
 
-    private void drawMenuCard(Canvas canvas, float centerY, String title, String subtitle) {
-        RectF card = new RectF(screenW * 0.12f, centerY - 36f, screenW * 0.88f, centerY + 36f);
-        paint.setStyle(Paint.Style.FILL);
-        paint.setColor(Color.argb(125, 255, 255, 255));
-        canvas.drawRoundRect(card, 18f, 18f, paint);
-        smallTextPaint.setTextAlign(Paint.Align.LEFT);
-        smallTextPaint.setColor(Color.WHITE);
-        smallTextPaint.setFakeBoldText(true);
-        canvas.drawText(title, card.left + 22f, centerY - 7f, smallTextPaint);
-        smallTextPaint.setFakeBoldText(false);
-        smallTextPaint.setColor(Color.rgb(218, 222, 232));
-        canvas.drawText(subtitle, card.left + 22f, centerY + 25f, smallTextPaint);
-        smallTextPaint.setTextAlign(Paint.Align.CENTER);
+    private void floor(Canvas c, int color) {
+        paint.setStyle(Paint.Style.FILL); paint.setColor(color); c.drawRect(0, groundY, w, h, paint);
+        paint.setColor(Color.rgb(42,48,54)); c.drawRect(0, groundY-4, w, groundY+4, paint);
+        paint.setStrokeWidth(2); paint.setColor(Color.argb(45,255,255,255));
+        for (int i=0;i<6;i++) c.drawLine(0, groundY+20+i*34, w, groundY+20+i*34, paint);
     }
 
-    private float currentTargetX(Level level) {
-        if (level.moveRange == 0f) {
-            return level.targetX;
+    private void target(Canvas c, Level l) {
+        float tx = targetX(l), ty = l.targetY * h;
+        if (l.mode == Mode.TARGET) bullseye(c, tx, ty, targetRadius(l));
+        else if (l.mode == Mode.BIN) bin(c, targetRect(l, tx, ty));
+        else if (l.mode == Mode.LAMP) lamp(c, tx, ty);
+        else cup(c, targetRect(l, tx, ty));
+    }
+
+    private void bullseye(Canvas c, float tx, float ty, float r) {
+        paint.setStyle(Paint.Style.FILL); paint.setColor(Color.rgb(240,240,240)); c.drawCircle(tx,ty,r,paint);
+        paint.setColor(Color.rgb(221,54,54)); c.drawCircle(tx,ty,r*.72f,paint);
+        paint.setColor(Color.WHITE); c.drawCircle(tx,ty,r*.45f,paint);
+        paint.setColor(Color.rgb(36,125,224)); c.drawCircle(tx,ty,r*.20f,paint);
+    }
+
+    private void bin(Canvas c, RectF r) {
+        paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(8); paint.setColor(Color.rgb(100,210,160));
+        c.drawLine(r.left,r.top,r.right,r.top,paint); paint.setColor(Color.rgb(75,105,95));
+        c.drawLine(r.left,r.top,r.left+r.width()*.18f,r.bottom,paint); c.drawLine(r.right,r.top,r.right-r.width()*.18f,r.bottom,paint);
+        c.drawLine(r.left+r.width()*.18f,r.bottom,r.right-r.width()*.18f,r.bottom,paint);
+        paint.setStyle(Paint.Style.FILL); paint.setColor(Color.argb(70,100,210,160)); c.drawRect(r,paint);
+    }
+
+    private void cup(Canvas c, RectF r) {
+        Path p = new Path(); p.moveTo(r.left,r.top); p.lineTo(r.right,r.top); p.lineTo(r.right-r.width()*.22f,r.bottom); p.lineTo(r.left+r.width()*.22f,r.bottom); p.close();
+        paint.setStyle(Paint.Style.FILL); paint.setColor(Color.argb(80,80,170,240)); c.drawPath(p,paint);
+        paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(7); paint.setColor(Color.rgb(120,210,255)); c.drawPath(p,paint);
+    }
+
+    private void lamp(Canvas c, float tx, float ty) {
+        paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(5); paint.setColor(Color.rgb(120,120,130)); c.drawLine(tx,0,tx,ty-34,paint);
+        paint.setStyle(Paint.Style.FILL); paint.setColor(Color.argb(55,255,224,95)); c.drawCircle(tx,ty,targetRadius(level())*2.2f,paint);
+        paint.setColor(Color.rgb(255,224,95)); c.drawCircle(tx,ty,targetRadius(level()),paint);
+        paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(4); paint.setColor(Color.rgb(80,80,80)); c.drawCircle(tx,ty,targetRadius(level()),paint);
+    }
+
+    private void obstacles(Canvas c, Level l) {
+        for (Obstacle o : l.obstacles) {
+            RectF r = o.rect(w,h); paint.setStyle(Paint.Style.FILL); paint.setColor(Color.rgb(88,92,105)); c.drawRoundRect(r,10,10,paint);
+            paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(3); paint.setColor(Color.rgb(135,140,155)); c.drawRoundRect(r,10,10,paint);
         }
-        return level.targetX + (float) Math.sin(gameTime * level.moveSpeed) * level.moveRange;
     }
 
-    private float sx(float worldX, float z) {
-        return screenW * 0.5f + worldX * screenW * 0.46f * scale(z);
+    private void launcher(Canvas c) {
+        paint.setStyle(Paint.Style.FILL); paint.setColor(Color.argb(90,0,0,0)); c.drawOval(new RectF(launchX-56,launchY+28,launchX+56,launchY+55),paint);
+        paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(8); paint.setColor(Color.rgb(160,110,70)); c.drawCircle(launchX,launchY,38,paint);
+        paint.setStyle(Paint.Style.FILL); paint.setColor(Color.rgb(215,165,95)); c.drawCircle(launchX,launchY,13,paint);
     }
 
-    private float sy(float height, float z) {
-        return floorY(z) - height * screenH * 0.42f * scale(z);
+    private void aim(Canvas c) {
+        paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(6); paint.setColor(Color.rgb(255,205,80)); c.drawLine(launchX,launchY,dragX,dragY,paint);
+        float pull = distance(dragX,dragY,launchX,launchY), pct = Math.min(1f, pull/maxPull());
+        paint.setStyle(Paint.Style.FILL); paint.setColor(Color.rgb(255,205,80)); c.drawRoundRect(new RectF(36,98,36+260*pct,122),10,10,paint);
+        paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(3); paint.setColor(Color.WHITE); c.drawRoundRect(new RectF(36,98,296,122),10,10,paint);
+        preview(c);
     }
 
-    private float floorY(float z) {
-        float clamped = clamp(z, 0f, 1.12f);
-        float perspective = (float) Math.pow(clamped, 0.72f);
-        return nearY - (nearY - horizonY) * perspective;
+    private void preview(Canvas c) {
+        float dx = launchX-dragX, dy = launchY-dragY, pull = distance(dragX,dragY,launchX,launchY), max = maxPull();
+        if (pull > max) { dx = dx/pull*max; dy = dy/pull*max; }
+        Level l = level(); float mult = speedMult(l.obj), pvx = dx*POWER*mult, pvy = dy*POWER*mult;
+        paint.setStyle(Paint.Style.FILL); paint.setColor(Color.argb(190,255,255,255));
+        for (int i=0;i<42;i++) { float t=i*.065f; float px=launchX+pvx*t+.5f*l.wind*t*t; float py=launchY+pvy*t+.5f*GRAVITY*l.gravity*t*t; if (py>groundY || px<0 || px>w) break; c.drawCircle(px,py,4.5f,paint); }
     }
 
-    private float scale(float z) {
-        return clamp(1.15f - z * 0.75f, 0.32f, 1.15f);
+    private void projectile(Canvas c, Obj type) {
+        paint.setStyle(Paint.Style.FILL); paint.setColor(Color.argb(90,0,0,0)); c.drawOval(new RectF(x-radius*1.2f,groundY-8,x+radius*1.2f,groundY+8),paint);
+        if (type == Obj.ARROW) { c.save(); c.rotate(rotation,x,y); paint.setStrokeWidth(8); paint.setColor(Color.rgb(220,180,85)); c.drawLine(x-34,y,x+36,y,paint); paint.setStyle(Paint.Style.FILL); Path head=new Path(); head.moveTo(x+48,y); head.lineTo(x+24,y-14); head.lineTo(x+24,y+14); head.close(); paint.setColor(Color.rgb(235,235,235)); c.drawPath(head,paint); c.restore(); return; }
+        if (type == Obj.PAPER) { paint.setColor(Color.rgb(235,235,225)); c.drawCircle(x,y,radius,paint); paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(3); paint.setColor(Color.rgb(170,170,165)); c.drawLine(x-8,y-5,x+9,y+7,paint); c.drawLine(x-6,y+8,x+7,y-8,paint); return; }
+        if (type == Obj.STONE) { paint.setColor(Color.rgb(115,118,124)); c.drawCircle(x,y,radius,paint); paint.setColor(Color.rgb(80,82,88)); c.drawCircle(x+5,y-4,radius*.35f,paint); return; }
+        paint.setColor(Color.rgb(255,145,70)); c.drawCircle(x,y,radius,paint); paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(4); paint.setColor(Color.rgb(120,75,45)); c.drawCircle(x,y,radius*.72f,paint);
     }
 
-    private float projectileRadius(Projectile projectile) {
-        if (projectile == Projectile.ARROW) {
-            return 13f;
-        }
-        if (projectile == Projectile.PAPER) {
-            return 22f;
-        }
-        if (projectile == Projectile.STONE) {
-            return 20f;
-        }
-        return 21f;
+    private void effect(Canvas c, Level l) {
+        if (scene != Scene.WIN) return; float tx=targetX(l), ty=l.targetY*h, r=30+(1-fxTimer)*160; int a=(int)clamp(190*fxTimer,0,190);
+        paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(8*fxTimer+2); paint.setColor(Color.argb(a,255,230,90)); c.drawCircle(tx,ty,r,paint);
+        paint.setStyle(Paint.Style.FILL); paint.setColor(Color.argb(a,255,245,160)); for(int i=0;i<10;i++){ double ang=i*Math.PI*2/10+time; c.drawCircle(tx+(float)Math.cos(ang)*r*.75f, ty+(float)Math.sin(ang)*r*.75f, 5+5*fxTimer, paint); }
     }
 
-    private float projectileSpeed(Projectile projectile) {
-        if (projectile == Projectile.ARROW) {
-            return 1.10f;
-        }
-        if (projectile == Projectile.PAPER) {
-            return 0.94f;
-        }
-        if (projectile == Projectile.STONE) {
-            return 1.02f;
-        }
-        return 0.98f;
+    private void hud(Canvas c) {
+        if (scene == Scene.MENU) return;
+        paint.setStyle(Paint.Style.FILL); paint.setColor(Color.argb(155,0,0,0)); c.drawRoundRect(new RectF(18,16,w-18,92),20,20,paint);
+        titlePaint.setTextSize(Math.max(36f,h*.052f)); titlePaint.setTextAlign(Paint.Align.LEFT); titlePaint.setColor(Color.WHITE); c.drawText("Mira Real",38,64,titlePaint);
+        textPaint.setTextAlign(Paint.Align.RIGHT); textPaint.setColor(Color.rgb(225,230,240)); Level l=level(); String info=String.format(Locale.getDefault(),"Fase %d/%d | %s | Tentativas: %d",levelIndex+1,levels.size(),l.name,attempts); c.drawText(info,w-36,62,textPaint);
+        textPaint.setTextAlign(Paint.Align.LEFT); textPaint.setColor(Color.rgb(220,225,235)); String wind=Math.abs(l.wind)<1?"sem vento":(l.wind>0?"vento para direita":"vento para esquerda"); c.drawText("Puxe, mire pela linha e solte. "+wind,36,h-28,textPaint);
     }
 
-    private float distance(float ax, float ay, float bx, float by) {
-        float dx = ax - bx;
-        float dy = ay - by;
-        return (float) Math.sqrt(dx * dx + dy * dy);
+    private void overlay(Canvas c) {
+        if (scene == Scene.AIM || scene == Scene.FLY) return;
+        paint.setStyle(Paint.Style.FILL); paint.setColor(Color.argb(scene==Scene.MENU?215:178,0,0,0)); c.drawRect(0,0,w,h,paint);
+        titlePaint.setTextAlign(Paint.Align.CENTER); titlePaint.setTextSize(Math.max(42f,h*.07f)); titlePaint.setColor(Color.WHITE); textPaint.setTextAlign(Paint.Align.CENTER); textPaint.setColor(Color.rgb(226,230,238));
+        if (scene == Scene.MENU) { c.drawText("MIRA REAL",w/2f,h*.30f,titlePaint); textPaint.setTextSize(Math.max(25f,h*.038f)); c.drawText("fisica de arremesso com fases variadas",w/2f,h*.38f,textPaint); card(c,h*.50f,"Modos diferentes","flecha, papel, pedra, bola e copo"); card(c,h*.61f,"Mais estavel","versao sem 3D bugado"); card(c,h*.72f,"Toque para jogar","arraste para mirar e solte"); return; }
+        String title = scene==Scene.WIN?"ACERTOU!":scene==Scene.FAIL?"QUASE!":"MVP COMPLETO";
+        String sub = scene==Scene.WIN?"Estrelas: "+stars+" | toque para continuar":scene==Scene.FAIL?"Toque para tentar de novo":"Toque para voltar ao menu";
+        c.drawText(title,w/2f,h*.45f,titlePaint); c.drawText(sub,w/2f,h*.53f,textPaint);
     }
 
-    private float clamp(float value, float min, float max) {
-        return Math.max(min, Math.min(max, value));
+    private void card(Canvas c, float cy, String a, String b) {
+        RectF r=new RectF(w*.12f,cy-36,w*.88f,cy+36); paint.setStyle(Paint.Style.FILL); paint.setColor(Color.argb(125,255,255,255)); c.drawRoundRect(r,18,18,paint);
+        textPaint.setTextAlign(Paint.Align.LEFT); textPaint.setColor(Color.WHITE); textPaint.setFakeBoldText(true); c.drawText(a,r.left+22,cy-7,textPaint); textPaint.setFakeBoldText(false); textPaint.setColor(Color.rgb(218,222,232)); c.drawText(b,r.left+22,cy+25,textPaint); textPaint.setTextAlign(Paint.Align.CENTER);
     }
 
-    private enum Scene {
-        MENU,
-        AIMING,
-        FLYING,
-        SUCCESS,
-        FAILED,
-        FINISHED
-    }
+    private float targetX(Level l) { return l.targetX*w + (l.moveRange==0?0:(float)Math.sin(time*l.moveSpeed)*l.moveRange*w); }
+    private RectF targetRect(Level l,float tx,float ty){ float ww=w*(l.mode==Mode.CUP?.080f:.105f), hh=h*(l.mode==Mode.CUP?.15f:.18f); return new RectF(tx-ww/2,ty-hh/2,tx+ww/2,ty+hh/2); }
+    private float targetRadius(Level l){ return l.mode==Mode.LAMP?Math.max(24f,h*.047f):Math.max(38f,h*.078f); }
+    private float objRadius(Obj o){ return o==Obj.ARROW?14:o==Obj.PAPER?20:o==Obj.STONE?18:19; }
+    private float speedMult(Obj o){ return o==Obj.ARROW?1.08f:o==Obj.PAPER?.92f:o==Obj.STONE?1f:.98f; }
+    private boolean circleRect(float cx,float cy,float rr,RectF r){ float nx=clamp(cx,r.left,r.right), ny=clamp(cy,r.top,r.bottom), dx=cx-nx, dy=cy-ny; return dx*dx+dy*dy<=rr*rr; }
+    private float distance(float ax,float ay,float bx,float by){ float dx=ax-bx,dy=ay-by; return (float)Math.sqrt(dx*dx+dy*dy); }
+    private float clamp(float v,float min,float max){ return Math.max(min,Math.min(max,v)); }
 
-    private enum Mode {
-        BULLSEYE,
-        BIN,
-        LAMP,
-        CUP
-    }
-
-    private enum Projectile {
-        ARROW,
-        PAPER,
-        STONE,
-        BALL
-    }
+    private enum Scene { MENU, AIM, FLY, WIN, FAIL, DONE }
+    private enum Mode { TARGET, BIN, LAMP, CUP }
+    private enum Obj { ARROW, PAPER, STONE, BALL }
+    private enum Theme { RANGE, OFFICE, STREET, TABLE }
 
     private static class Level {
-        final String name;
-        final Mode mode;
-        final Projectile projectile;
-        final float targetX;
-        final float targetZ;
-        final float targetH;
-        final float wind;
-        final float gravityScale;
-        final float bounce;
-        final float drag;
-        final float arc;
-        float moveRange;
-        float moveSpeed;
-        final List<Block> blocks = new ArrayList<>();
-
-        Level(String name, Mode mode, Projectile projectile, float targetX, float targetZ,
-              float targetH, float wind, float gravityScale, float bounce) {
-            this.name = name;
-            this.mode = mode;
-            this.projectile = projectile;
-            this.targetX = targetX;
-            this.targetZ = targetZ;
-            this.targetH = targetH;
-            this.wind = wind;
-            this.gravityScale = gravityScale;
-            this.bounce = bounce;
-            this.drag = projectile == Projectile.PAPER ? 0.17f : 0.055f;
-            this.arc = projectile == Projectile.ARROW ? 0.93f : projectile == Projectile.STONE ? 1.05f : 1.0f;
-        }
-
-        Level block(float x, float z, float width, float depth, float height) {
-            blocks.add(new Block(x, z, width, depth, height));
-            return this;
-        }
-
-        Level moving(float range, float speed) {
-            this.moveRange = range;
-            this.moveSpeed = speed;
-            return this;
-        }
+        final String name; final Mode mode; final Obj obj; final float launchX, launchY, targetX, targetY, wind, gravity, bounce, drag; final Theme theme; float moveRange, moveSpeed; final List<Obstacle> obstacles=new ArrayList<>();
+        Level(String name,Mode mode,Obj obj,float lx,float ly,float tx,float ty,float wind,float gravity,float bounce,Theme theme){ this.name=name; this.mode=mode; this.obj=obj; this.launchX=lx; this.launchY=ly; this.targetX=tx; this.targetY=ty; this.wind=wind; this.gravity=gravity; this.bounce=bounce; this.theme=theme; this.drag=obj==Obj.PAPER?.10f:.025f; }
+        Level obstacle(float l,float t,float r,float b){ obstacles.add(new Obstacle(l,t,r,b)); return this; }
+        Level moving(float range,float speed){ moveRange=range; moveSpeed=speed; return this; }
     }
-
-    private static class Block {
-        final float x;
-        final float z;
-        final float width;
-        final float depth;
-        final float height;
-
-        Block(float x, float z, float width, float depth, float height) {
-            this.x = x;
-            this.z = z;
-            this.width = width;
-            this.depth = depth;
-            this.height = height;
-        }
-    }
+    private static class Obstacle { final float l,t,r,b; Obstacle(float l,float t,float r,float b){this.l=l;this.t=t;this.r=r;this.b=b;} RectF rect(float w,float h){return new RectF(l*w,t*h,r*w,b*h);} }
 }
