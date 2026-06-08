@@ -4,12 +4,12 @@ plugins {
 
 android {
     namespace 'com.natividade0.apagaogame'
-    compileSdk 35
+    compileSdk 34
 
     defaultConfig {
         applicationId 'com.natividade0.apagaogame'
         minSdk 23
-        targetSdk 35
+        targetSdk 34
         versionCode 1
         versionName '0.1.0'
     }
