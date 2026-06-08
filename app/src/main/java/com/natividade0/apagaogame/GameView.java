@@ -238,11 +238,11 @@ public class GameView extends SurfaceView implements Runnable, SurfaceHolder.Cal
         Canvas c = null;
         try {
             c = holder.lockCanvas();
-            if (c != null) draw(c);
+            if (c != null) drawGame(c);
         } finally { if (c != null) holder.unlockCanvasAndPost(c); }
     }
 
-    private void draw(Canvas c) {
+    private void drawGame(Canvas c) {
         float sx = shakeTimer > 0 ? (float) Math.sin(time * 80) * 8f * shakeTimer : 0;
         float sy = shakeTimer > 0 ? (float) Math.cos(time * 70) * 6f * shakeTimer : 0;
         c.save(); c.translate(sx, sy);
