@@ -1,8 +1,8 @@
-# Apagão
+# Mira Real
 
-**Apagão** é um MVP de jogo Android 2D feito em Java nativo, sem Unity e sem bibliotecas pesadas. A versão inicial usa `Canvas` em uma `SurfaceView` para validar a mecânica principal:
+**Mira Real** é um MVP de jogo Android 2D feito em Java nativo, sem Unity e sem bibliotecas pesadas. A versão inicial usa `Canvas` em uma `SurfaceView` para validar uma mecânica simples e viciante:
 
-> Você só enxerga quando acende a luz. Mas a luz atrai o perigo.
+> Arraste, mire, solte e acerte o alvo usando física.
 
 ## Status do MVP
 
@@ -11,13 +11,16 @@ Esta primeira versão jogável inclui:
 - Projeto Android nativo com módulo `app`.
 - `MainActivity` em Java.
 - `GameView` desenhando tudo com `Canvas`.
-- Jogador com movimentação por toque/arraste.
-- Labirinto simples baseado em grade.
-- Pulso de luz temporário para revelar a fase.
-- Bateria com custo por pulso e recarga quando a luz está apagada.
-- Inimigos que patrulham e são atraídos pelo último pulso de luz.
-- Saída da fase, vitória ao completar todas as fases e derrota ao tocar em inimigos.
-- 3 fases simples para testar a progressão.
+- Física simples com gravidade, vento, quique, atrito e obstáculos.
+- Sistema de arrastar para mirar e soltar para arremessar.
+- Diferentes tipos de desafios:
+  - flecha no alvo;
+  - bolinha no cesto;
+  - pedra na lâmpada;
+  - copo em movimento;
+  - trickshot com obstáculos.
+- 8 fases iniciais.
+- Sistema simples de tentativas e estrelas.
 
 ## Como abrir no Android Studio
 
@@ -42,29 +45,28 @@ Esta primeira versão jogável inclui:
 4. Aguarde a sincronização do Gradle.
 5. Compile e execute o módulo **app**.
 
-> Observação: se o AndroidIDE instalado não suportar a versão configurada do Android Gradle Plugin, atualize o AndroidIDE ou ajuste a versão do plugin em `build.gradle` para uma versão compatível com o ambiente local.
+## Atualizar no AndroidIDE
 
-## Como compilar pela linha de comando
-
-Com Android SDK instalado e configurado:
+Se você já clonou o projeto antes, rode:
 
 ```bash
-gradle :app:assembleDebug
+cd /storage/emulated/0/AndroidIDEProjects/ApagaoGame
+git fetch --all
+git reset --hard origin/main
+rm -rf .gradle app/build build
 ```
 
-Também é possível usar o Gradle integrado do Android Studio. O projeto usa repositórios `google()` e `mavenCentral()` para baixar o Android Gradle Plugin.
+Depois rode pelo botão **Build/Run** do AndroidIDE.
 
 ## Como jogar
 
-- O objetivo é chegar ao quadrado verde de saída.
-- Arraste no lado esquerdo da tela para mover o jogador azul.
-- O labirinto fica quase todo escuro quando a luz está apagada.
-- Toque no botão **LUZ** para emitir um pulso de luz e revelar a área ao redor.
-- Cada pulso consome bateria.
-- A bateria recarrega aos poucos quando a luz não está ativa.
-- Inimigos vermelhos são atraídos para o local onde a luz foi acesa.
-- Se um inimigo encostar no jogador, é derrota.
-- Complete as 3 fases para vencer.
+- Arraste o dedo para trás a partir do lançador.
+- Quanto mais puxar, mais força o arremesso terá.
+- Solte para lançar.
+- Acerte o alvo da fase.
+- Algumas fases têm vento, alvos em movimento, obstáculos ou quique.
+- Toque depois de errar para tentar novamente.
+- Toque depois de acertar para avançar de fase.
 
 ## Estrutura principal
 
@@ -84,8 +86,10 @@ app/
 
 ## Próximos passos sugeridos
 
-- Ajustar balanceamento de bateria, raio de luz e velocidade dos inimigos após testes.
-- Adicionar áudio simples para pulso de luz e alerta de inimigo.
-- Criar sprites leves para paredes, jogador e inimigos.
+- Ajustar a sensação do arremesso.
+- Adicionar sons de acerto, erro, vidro quebrando e quique.
+- Criar sprites melhores para objetos e alvos.
+- Adicionar menu inicial.
+- Adicionar seleção de fases.
 - Salvar progresso local.
-- Adicionar mais fases e um menu inicial.
+- Criar modo infinito e desafio diário.
