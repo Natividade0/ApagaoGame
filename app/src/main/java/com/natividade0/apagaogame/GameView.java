@@ -15,10 +15,9 @@ import java.util.List;
 import java.util.Locale;
 
 public class GameView extends SurfaceView implements Runnable, SurfaceHolder.Callback {
-    private static final float MAX_PULL = 260f;
-    private static final float POWER_SCALE = 4.4f;
-    private static final float BASE_GRAVITY = 980f;
-    private static final float MIN_SHOT_POWER = 30f;
+    private static final float POWER_SCALE = 5.9f;
+    private static final float BASE_GRAVITY = 650f;
+    private static final float MIN_SHOT_POWER = 22f;
 
     private final SurfaceHolder holder;
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -73,26 +72,26 @@ public class GameView extends SurfaceView implements Runnable, SurfaceHolder.Cal
 
     private void setupLevels() {
         levels.add(new Level("Flecha no alvo", Mode.BULLSEYE, Projectile.ARROW,
-                0.13f, 0.72f, 0.78f, 0.38f, 0f, 1f, 0.15f));
+                0.13f, 0.72f, 0.68f, 0.45f, 0f, 0.92f, 0.12f));
         levels.add(new Level("Bolinha no cesto", Mode.BIN, Projectile.PAPER_BALL,
-                0.16f, 0.67f, 0.76f, 0.60f, 0f, 0.95f, 0.35f));
-        levels.add(new Level("Pedra na lâmpada", Mode.LAMP, Projectile.STONE,
-                0.12f, 0.72f, 0.80f, 0.28f, -18f, 1.05f, 0.28f));
+                0.15f, 0.68f, 0.67f, 0.62f, 0f, 0.88f, 0.32f));
+        levels.add(new Level("Pedra na lampada", Mode.LAMP, Projectile.STONE,
+                0.13f, 0.72f, 0.70f, 0.32f, -10f, 0.96f, 0.25f));
         levels.add(new Level("Flecha com vento", Mode.BULLSEYE, Projectile.ARROW,
-                0.13f, 0.72f, 0.78f, 0.34f, 55f, 1f, 0.15f));
+                0.13f, 0.72f, 0.72f, 0.42f, 25f, 0.92f, 0.12f));
         levels.add(new Level("Cesto com quique", Mode.BIN, Projectile.BALL,
-                0.14f, 0.68f, 0.78f, 0.60f, 0f, 0.98f, 0.58f)
-                .addObstacle(0.46f, 0.70f, 0.56f, 0.76f));
+                0.14f, 0.68f, 0.70f, 0.63f, 0f, 0.92f, 0.62f)
+                .addObstacle(0.46f, 0.71f, 0.57f, 0.77f));
         levels.add(new Level("Pedra com curva", Mode.LAMP, Projectile.STONE,
-                0.13f, 0.74f, 0.83f, 0.25f, -70f, 1.08f, 0.30f)
-                .addObstacle(0.50f, 0.32f, 0.56f, 0.82f));
+                0.13f, 0.74f, 0.74f, 0.30f, -35f, 0.98f, 0.28f)
+                .addObstacle(0.50f, 0.39f, 0.56f, 0.82f));
         levels.add(new Level("Copo em movimento", Mode.CUP, Projectile.BALL,
-                0.13f, 0.68f, 0.74f, 0.62f, 0f, 0.98f, 0.52f)
-                .moving(0.09f, 1.2f));
+                0.13f, 0.68f, 0.68f, 0.63f, 0f, 0.92f, 0.56f)
+                .moving(0.055f, 1.05f));
         levels.add(new Level("Trickshot final", Mode.BULLSEYE, Projectile.STONE,
-                0.12f, 0.70f, 0.82f, 0.36f, 0f, 1.04f, 0.45f)
-                .addObstacle(0.38f, 0.50f, 0.46f, 0.84f)
-                .addObstacle(0.62f, 0.18f, 0.68f, 0.58f));
+                0.12f, 0.70f, 0.72f, 0.40f, 0f, 0.96f, 0.45f)
+                .addObstacle(0.38f, 0.57f, 0.46f, 0.84f)
+                .addObstacle(0.62f, 0.26f, 0.68f, 0.60f));
     }
 
     @Override
@@ -195,8 +194,8 @@ public class GameView extends SurfaceView implements Runnable, SurfaceHolder.Cal
 
         projectileVx += level.wind * dt;
         projectileVy += BASE_GRAVITY * level.gravityScale * dt;
-        projectileVx *= Math.max(0.80f, 1f - level.airDrag * dt);
-        projectileVy *= Math.max(0.80f, 1f - level.airDrag * dt);
+        projectileVx *= Math.max(0.86f, 1f - level.airDrag * dt);
+        projectileVy *= Math.max(0.92f, 1f - level.airDrag * 0.22f * dt);
 
         projectileX += projectileVx * dt;
         projectileY += projectileVy * dt;
@@ -209,13 +208,13 @@ public class GameView extends SurfaceView implements Runnable, SurfaceHolder.Cal
         }
 
         float speed = (float) Math.sqrt(projectileVx * projectileVx + projectileVy * projectileVy);
-        if (projectileY + projectileRadius >= groundY - 1f && speed < 80f) {
+        if (projectileY + projectileRadius >= groundY - 1f && speed < 90f) {
             stopTimer += dt;
         } else {
             stopTimer = 0f;
         }
 
-        if (stopTimer > 0.7f || projectileX < -160f || projectileX > screenW + 160f || projectileY > screenH + 160f) {
+        if (stopTimer > 0.8f || projectileX < -220f || projectileX > screenW + 220f || projectileY > screenH + 220f) {
             state = GameState.FAILED;
         }
     }
@@ -224,8 +223,8 @@ public class GameView extends SurfaceView implements Runnable, SurfaceHolder.Cal
         if (projectileY + projectileRadius > groundY) {
             projectileY = groundY - projectileRadius;
             projectileVy = -Math.abs(projectileVy) * level.bounce;
-            projectileVx *= 0.82f;
-            if (Math.abs(projectileVy) < 45f) {
+            projectileVx *= 0.88f;
+            if (Math.abs(projectileVy) < 38f) {
                 projectileVy = 0f;
             }
         }
@@ -262,11 +261,11 @@ public class GameView extends SurfaceView implements Runnable, SurfaceHolder.Cal
         } else if (min == topPen) {
             projectileY = r.top - projectileRadius;
             projectileVy = -Math.abs(projectileVy) * bounce;
-            projectileVx *= 0.86f;
+            projectileVx *= 0.90f;
         } else {
             projectileY = r.bottom + projectileRadius;
             projectileVy = Math.abs(projectileVy) * bounce;
-            projectileVx *= 0.86f;
+            projectileVx *= 0.90f;
         }
     }
 
@@ -276,7 +275,8 @@ public class GameView extends SurfaceView implements Runnable, SurfaceHolder.Cal
 
         if (level.mode == Mode.BIN || level.mode == Mode.CUP) {
             RectF cup = targetRect(level, tx, ty);
-            return projectileX > cup.left && projectileX < cup.right && projectileY > cup.top && projectileY < cup.bottom && projectileVy > -120f;
+            boolean inside = projectileX > cup.left && projectileX < cup.right && projectileY > cup.top && projectileY < cup.bottom;
+            return inside && projectileVy > -180f;
         }
 
         float targetRadius = targetRadius(level);
@@ -309,17 +309,18 @@ public class GameView extends SurfaceView implements Runnable, SurfaceHolder.Cal
             return;
         }
 
-        if (pull > MAX_PULL) {
-            dx = dx / pull * MAX_PULL;
-            dy = dy / pull * MAX_PULL;
-            pull = MAX_PULL;
+        float maxPull = maxPull();
+        if (pull > maxPull) {
+            dx = dx / pull * maxPull;
+            dy = dy / pull * maxPull;
         }
 
+        float multiplier = speedMultiplier(level().projectile);
         attempts++;
         projectileX = launchX;
         projectileY = launchY;
-        projectileVx = dx * POWER_SCALE;
-        projectileVy = dy * POWER_SCALE;
+        projectileVx = dx * POWER_SCALE * multiplier;
+        projectileVy = dy * POWER_SCALE * multiplier;
         state = GameState.FLYING;
         dragging = false;
         flightTime = 0f;
@@ -378,10 +379,15 @@ public class GameView extends SurfaceView implements Runnable, SurfaceHolder.Cal
         float dx = dragX - launchX;
         float dy = dragY - launchY;
         float dist = (float) Math.sqrt(dx * dx + dy * dy);
-        if (dist > MAX_PULL) {
-            dragX = launchX + dx / dist * MAX_PULL;
-            dragY = launchY + dy / dist * MAX_PULL;
+        float maxPull = maxPull();
+        if (dist > maxPull) {
+            dragX = launchX + dx / dist * maxPull;
+            dragY = launchY + dy / dist * maxPull;
         }
+    }
+
+    private float maxPull() {
+        return Math.max(330f, Math.min(screenW * 0.36f, screenH * 0.58f));
     }
 
     private void drawFrame() {
@@ -532,23 +538,40 @@ public class GameView extends SurfaceView implements Runnable, SurfaceHolder.Cal
         paint.setColor(Color.rgb(255, 205, 80));
         canvas.drawLine(launchX, launchY, dragX, dragY, paint);
 
+        float pull = distance(dragX, dragY, launchX, launchY);
+        float pct = Math.min(1f, pull / maxPull());
+        paint.setStyle(Paint.Style.FILL);
+        paint.setColor(Color.rgb(255, 205, 80));
+        canvas.drawRoundRect(new RectF(36, 98, 36 + 260 * pct, 122), 10f, 10f, paint);
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeWidth(3f);
+        paint.setColor(Color.WHITE);
+        canvas.drawRoundRect(new RectF(36, 98, 296, 122), 10f, 10f, paint);
+
         float dx = launchX - dragX;
         float dy = launchY - dragY;
-        paint.setStrokeWidth(3f);
-        paint.setColor(Color.argb(170, 255, 255, 255));
+        float maxPull = maxPull();
+        if (pull > maxPull) {
+            dx = dx / pull * maxPull;
+            dy = dy / pull * maxPull;
+        }
+
+        paint.setStrokeWidth(4f);
+        paint.setColor(Color.argb(190, 255, 255, 255));
         float px = launchX;
         float py = launchY;
-        float vx = dx * POWER_SCALE;
-        float vy = dy * POWER_SCALE;
         Level level = level();
-        for (int i = 0; i < 30; i++) {
-            float t = i * 0.07f;
+        float multiplier = speedMultiplier(level.projectile);
+        float vx = dx * POWER_SCALE * multiplier;
+        float vy = dy * POWER_SCALE * multiplier;
+        for (int i = 0; i < 42; i++) {
+            float t = i * 0.065f;
             float x = px + vx * t + 0.5f * level.wind * t * t;
             float y = py + vy * t + 0.5f * BASE_GRAVITY * level.gravityScale * t * t;
             if (y > groundY || x < 0 || x > screenW) {
                 break;
             }
-            canvas.drawCircle(x, y, 4f, paint);
+            canvas.drawCircle(x, y, 4.5f, paint);
         }
     }
 
@@ -611,8 +634,8 @@ public class GameView extends SurfaceView implements Runnable, SurfaceHolder.Cal
 
         smallTextPaint.setTextAlign(Paint.Align.LEFT);
         smallTextPaint.setColor(Color.rgb(210, 220, 230));
-        String wind = Math.abs(level.wind) < 1f ? "sem vento" : (level.wind > 0 ? "vento →" : "vento ←");
-        canvas.drawText("Arraste para trás, solte e acerte. " + wind, 36f, screenH - 28f, smallTextPaint);
+        String wind = Math.abs(level.wind) < 1f ? "sem vento" : (level.wind > 0 ? "vento ->" : "vento <-");
+        canvas.drawText("Puxe mais para tras = mais forca. " + wind, 36f, screenH - 28f, smallTextPaint);
     }
 
     private void drawStateMessage(Canvas canvas) {
@@ -631,7 +654,7 @@ public class GameView extends SurfaceView implements Runnable, SurfaceHolder.Cal
             title = "Acertou!";
             subtitle = "Estrelas: " + stars + "  • toque para continuar";
         } else if (state == GameState.FINISHED) {
-            title = "Você completou o MVP!";
+            title = "Voce completou o MVP!";
             subtitle = "Toque para jogar de novo";
         } else {
             title = "Errou!";
@@ -652,29 +675,42 @@ public class GameView extends SurfaceView implements Runnable, SurfaceHolder.Cal
     }
 
     private RectF targetRect(Level level, float tx, float ty) {
-        float w = screenW * (level.mode == Mode.CUP ? 0.075f : 0.095f);
-        float h = screenH * (level.mode == Mode.CUP ? 0.13f : 0.16f);
+        float w = screenW * (level.mode == Mode.CUP ? 0.080f : 0.105f);
+        float h = screenH * (level.mode == Mode.CUP ? 0.15f : 0.18f);
         return new RectF(tx - w / 2f, ty - h / 2f, tx + w / 2f, ty + h / 2f);
     }
 
     private float targetRadius(Level level) {
         if (level.mode == Mode.LAMP) {
-            return Math.max(18f, screenH * 0.040f);
+            return Math.max(24f, screenH * 0.047f);
         }
-        return Math.max(28f, screenH * 0.065f);
+        return Math.max(38f, screenH * 0.078f);
     }
 
     private float radiusFor(Projectile projectile) {
         if (projectile == Projectile.ARROW) {
-            return 12f;
+            return 14f;
         }
         if (projectile == Projectile.PAPER_BALL) {
-            return 18f;
+            return 20f;
         }
         if (projectile == Projectile.STONE) {
-            return 16f;
+            return 18f;
         }
-        return 17f;
+        return 19f;
+    }
+
+    private float speedMultiplier(Projectile projectile) {
+        if (projectile == Projectile.ARROW) {
+            return 1.08f;
+        }
+        if (projectile == Projectile.PAPER_BALL) {
+            return 0.92f;
+        }
+        if (projectile == Projectile.STONE) {
+            return 1.00f;
+        }
+        return 0.98f;
     }
 
     private boolean circleIntersectsRect(float cx, float cy, float radius, RectF rect) {
@@ -745,7 +781,7 @@ public class GameView extends SurfaceView implements Runnable, SurfaceHolder.Cal
             this.wind = wind;
             this.gravityScale = gravityScale;
             this.bounce = bounce;
-            this.airDrag = projectile == Projectile.PAPER_BALL ? 0.16f : 0.045f;
+            this.airDrag = projectile == Projectile.PAPER_BALL ? 0.10f : 0.025f;
         }
 
         Level addObstacle(float left, float top, float right, float bottom) {
