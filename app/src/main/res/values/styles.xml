@@ -1,0 +1,8 @@
+<resources>
+    <style name="Theme.ApagaoGame" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">#F9D36A</item>
+    </style>
+</resources>
